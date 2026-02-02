@@ -15,10 +15,10 @@ class LanScanner extends LanScannerCore {
     super.debugTiming = ScannerDefaults.debugTiming,
     super.enableHttpScan = ScannerDefaults.enableHttpScan,
     super.deferHttpScan = ScannerDefaults.deferHttpScan,
-    bool allowReverseDnsFailure = true,
-    bool allowPingFailure = true,
-    bool enableTcpReachability = true,
-    bool requireReverseDnsForProbes = true,
+    super.allowReverseDnsFailure = true,
+    super.allowPingFailure = true,
+    super.enableTcpReachability = true,
+    super.requireReverseDnsForProbes = true,
     int? reverseDnsTimeoutMs,
     super.preferredInterfaceNames = const ['en0'],
   }) : super(
@@ -40,12 +40,8 @@ class LanScanner extends LanScannerCore {
           enableArpCache: false,
           enableNdp: false,
           enableIpv6Discovery: false,
-          allowReverseDnsFailure: allowReverseDnsFailure,
-          allowPingFailure: allowPingFailure,
-          enableTcpReachability: enableTcpReachability,
           ignoreMdnsErrors: true,
           reverseDnsTimeoutMs:
               reverseDnsTimeoutMs ?? ScannerDefaults.defaultReverseDnsTimeoutMs,
-          requireReverseDnsForProbes: requireReverseDnsForProbes,
         );
 }

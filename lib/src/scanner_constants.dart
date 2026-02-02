@@ -136,6 +136,7 @@ class ScannerDefaults {
   static const bool enableIpv6Discovery = true;
   static const bool enableHttpScan = true;
   static const bool deferHttpScan = false;
+  static const bool pingOnlyArpCacheHosts = false;
 
   static const bool allowReverseDnsFailure = false;
   static const bool allowPingFailure = false;
