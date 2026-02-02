@@ -1537,10 +1537,16 @@ class _PopupMenuRouteLayout extends SingleChildLayoutDelegate {
 
   @override
   Offset getPositionForChild(Size size, Size childSize) {
-    return Offset(
-      position.left,
-      position.top,
-    );
+    const double menuScreenPadding = 8.0;
+    final maxX = size.width - childSize.width - menuScreenPadding;
+    final maxY = size.height - childSize.height - menuScreenPadding;
+    final left = position.left.clamp(menuScreenPadding, maxX);
+    var top = position.top;
+    if (top + childSize.height > size.height - menuScreenPadding) {
+      top = position.top - childSize.height;
+    }
+    top = top.clamp(menuScreenPadding, maxY);
+    return Offset(left, top);
   }
 
   @override

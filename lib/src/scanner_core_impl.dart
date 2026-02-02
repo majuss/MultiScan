@@ -2452,6 +2452,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     if (!isDesktop) return true;
     if (!enableArpCache) return true;
     if (arpPingIps.isEmpty) return true;
+    if (!ScannerDefaults.pingOnlyArpCacheHosts) return true;
     return arpPingIps.contains(_ipv4ToInt(ip));
   }
 
