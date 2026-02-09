@@ -5,6 +5,8 @@ Flutter desktop/mobile app that scans the local network, discovers hosts, and su
 
 ## App Structure
 
+Die Verzeichnisstruktur ist bewusst schlank gehalten: UI und Scan-Logik sind klar getrennt, die Plattform-Anpassungen liegen in eigenen Wrappern. Der Einstieg passiert über `lib/main.dart`, die plattformspezifische Auswahl über `lib/src/scanner.dart`, und die eigentliche Scan-Engine sitzt in `lib/src/scanner_core.dart` plus Implementierung in `lib/src/scanner_core_impl.dart`.
+
 - `lib/main.dart`
   - Entry point and UI.
   - Builds the `MultiScanApp` theme and the `ScanPage` widget.
@@ -22,6 +24,8 @@ Flutter desktop/mobile app that scans the local network, discovers hosts, and su
   - Signals include ICMP latency, reverse DNS, NBNS, mDNS, SSDP, WS-Discovery, LLMNR, HTTP title/hints, TLS certificate names, SSH/Telnet banners, SNMP sysName, SMB name hints, ARP MACs, and IPv6 via NDP where available.
   - Concurrency control via `_concurrentMap` with configurable `parallelRequests` (default 128) to speed scans.
   - ICMP latency uses `dart_ping` and is considered best-effort where raw sockets are restricted.
+
+The scan flow is staged: it gathers interfaces and ARP/NDP caches, starts multicast listeners (mDNS/SSDP/NBNS/WS-Discovery) and DNS helpers, then performs a concurrent IPv4 sweep across each subnet. After the sweep, it merges any multicast snapshots and NDP neighbors, sorts hosts by IPv4, and schedules background refreshes for MACs, DNS/LLMNR/mDNS reverse hints, and optional HTTP/TLS/banner enrichment so the UI can show early results while enrichment continues.
 
 - `lib/src/scanner_*` (platform wrappers)
   - Platform overrides for defaults and OS-specific helpers.
@@ -148,21 +152,27 @@ Linux is also a good candidate for additional integrations: you can add `arp -n`
 
 ### Android
 
-Android scans are biased toward Wi-Fi interfaces and are intentionally conservative about power and background network usage. The platform layer filters interfaces to Wi-Fi (matching the active Wi-Fi IP or names like `wlan`/`wifi`). IPv4 MACs come from `/proc/net/arp`, and IPv6 neighbors are parsed via `ip -6 neigh` when available. DNS search domains and servers come from `/etc/resolv.conf`, which is typically managed by the device DNS resolver stack.
+Android scans are biased toward Wi-Fi interfaces and are intentionally conservative about power and background network usage. The platform layer filters interfaces to Wi-Fi (matching the active Wi-Fi IP or names like `wlan`/`wifi`).
+
+Important: on modern stock Android, several "desktop-style" data sources are not stable APIs and are frequently unavailable to apps. This code *tries* to read IPv4 MACs from `/proc/net/arp` and to parse IPv6 neighbors via `ip -6 neigh`, but on many devices/Android versions these are blocked, missing, or return incomplete data. In practice you should expect MAC addresses and IPv6 neighbor results to be empty unless you're running on a rooted device / custom ROM with permissive settings.
+
+DNS search domains and servers are attempted via `/etc/resolv.conf`, but Android often doesn't expose resolver configuration that way, so these helpers may return empty results even though DNS itself works.
 
 Special handling for Android is primarily about reducing scan cost and coping with stricter networking rules. HTTP scanning is enabled but deferred so the main scan completes quickly and optional HTTP title/hint lookups can be scheduled afterward. Multicast discovery (mDNS, SSDP, WS-Discovery, LLMNR) can be throttled or blocked by OEM firmware or device power policies, so results can be inconsistent across devices. The scanner treats missing multicast results as expected and relies on ICMP, reverse DNS, and HTTP/TLS hints to fill in missing names.
 
-If you plan to ship on Android, ensure that the app requests the Local Network permissions required for multicast traffic and that the user has granted them. On some devices you may need to keep the screen awake during scans, or provide a toggle to reduce the parallel request count. The interface dropdown is still available but will usually only list Wi-Fi interfaces because of the platform filtering.
+If you plan to ship on Android, ensure your release manifest includes the permissions you actually need. This repo currently declares `android.permission.INTERNET` only in `android/app/src/debug/AndroidManifest.xml` and `android/app/src/profile/AndroidManifest.xml`, so a release build may not be able to scan at all unless you add it to `android/app/src/main/AndroidManifest.xml`. For multicast-based discovery to work reliably on Wi-Fi, many devices also need `android.permission.CHANGE_WIFI_MULTICAST_STATE` and a held `WifiManager.MulticastLock` (OEM policies may still throttle multicast).
+
+On some devices you may need to keep the screen awake during scans, or provide a toggle to reduce the parallel request count. The interface dropdown is still available but will usually only list Wi-Fi interfaces because of the platform filtering.
 
 | Protocol | Default | Notes |
 | --- | --- | --- |
-| ICMPv4 | On | Best-effort; may be restricted. |
-| ICMPv6 | On | Best-effort; may be restricted. |
+| ICMPv4 | On | Best-effort; often blocked (no raw socket / CAP\_NET\_RAW). |
+| ICMPv6 | On | Best-effort; often blocked (no raw socket / CAP\_NET\_RAW). |
 | TCP Reachability | Off | Available but disabled by default. |
-| ARP Cache | On | `/proc/net/arp`. |
-| NDP Cache | On | `ip -6 neigh` + warmup ping. |
+| ARP Cache | On | Best-effort; `/proc/net/arp` is often inaccessible or incomplete on stock Android. |
+| NDP Cache | On | Best-effort; `ip` may be missing/unexecutable and neighbor access is often restricted. |
 | Reverse DNS | On | PTR lookups. |
-| mDNS | On | Multicast listen window. |
+| mDNS | On | Best-effort; multicast can be blocked/throttled by OEM/AP/power policy. |
 | mDNS Reverse | On | Extra mDNS reverse hints. |
 | NBNS | On | Unicast NBNS queries. |
 | NBNS Broadcast | On | Broadcast discovery. |
@@ -176,7 +186,7 @@ If you plan to ship on Android, ensure that the app requests the Local Network p
 | SMB1 | On | Legacy SMB1 probes. |
 | SMB Names | On | SMB name hints. |
 | SNMP Names | On | SNMP sysName/sysDescr. |
-| DNS Search Domains | On | `/etc/resolv.conf`. |
+| DNS Search Domains | On | Best-effort; `/etc/resolv.conf` frequently doesn't reflect the active resolver on Android. |
 
 ### iOS
 
