@@ -44,8 +44,7 @@ class ScannerDefaults {
   static const int nonHostnameTimeoutBaseMs = 300;
   static const int nonHostnameTimeoutNdpMs = 1200;
   static const int nonHostnameTimeoutMinMs = 1;
-  //static const int nonHostnameTimeoutMaxMs = 60000;
-    static const int nonHostnameTimeoutMaxMs = 2000;
+  static const int nonHostnameTimeoutMaxMs = 2000;
 
   static const int nonHostnameTimeoutProcessMs = 900;
 
@@ -130,7 +129,7 @@ class ScannerDefaults {
   static const bool enableSnmpNames = true;
   static const bool enableSmbNames = true;
   static const bool includeAdvancedHostnames = true;
-  static const bool debugTiming = true;
+  static const bool debugTiming = false;
   static const bool enableArpCache = true;
   static const bool enableNdp = true;
   static const bool enableIpv6Discovery = true;
