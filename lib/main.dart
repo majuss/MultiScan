@@ -6,6 +6,7 @@ import 'package:dart_ping/dart_ping.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 
 import 'src/models.dart';
 import 'src/scanner.dart';
@@ -19,6 +20,89 @@ const bool _scanInitialFull = bool.fromEnvironment(
   'SCAN_INITIAL_FULL',
   defaultValue: false,
 );
+
+class MultiScanLogo extends StatelessWidget {
+  const MultiScanLogo({super.key, this.size = 28, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedColor = color ?? Theme.of(context).colorScheme.primary;
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(painter: _EthernetLogoPainter(color: resolvedColor)),
+    );
+  }
+}
+
+class _EthernetLogoPainter extends CustomPainter {
+  const _EthernetLogoPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = (size.width * 0.08).clamp(1.0, 3.0);
+    final cablePaint = Paint()
+      ..color = color
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+
+    final bodyRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * 0.16,
+        size.height * 0.12,
+        size.width * 0.68,
+        size.height * 0.50,
+      ),
+      Radius.circular(size.width * 0.08),
+    );
+    final bodyPaint = Paint()..color = color.withValues(alpha: 0.92);
+    canvas.drawRRect(bodyRect, bodyPaint);
+
+    final contactPaint = Paint()..color = Colors.white.withValues(alpha: 0.92);
+    final contactStrip = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * 0.22,
+        size.height * 0.19,
+        size.width * 0.56,
+        size.height * 0.10,
+      ),
+      Radius.circular(size.width * 0.02),
+    );
+    canvas.drawRRect(contactStrip, contactPaint);
+
+    final pinPaint = Paint()..color = color.withValues(alpha: 0.86);
+    final pinWidth = size.width * 0.05;
+    final pinHeight = size.height * 0.14;
+    var x = size.width * 0.24;
+    for (var i = 0; i < 6; i++) {
+      final pinRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, size.height * 0.31, pinWidth, pinHeight),
+        Radius.circular(size.width * 0.01),
+      );
+      canvas.drawRRect(pinRect, pinPaint);
+      x += size.width * 0.09;
+    }
+
+    canvas.drawLine(
+      Offset(size.width * 0.5, size.height * 0.62),
+      Offset(size.width * 0.5, size.height * 0.92),
+      cablePaint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.5, size.height * 0.92),
+      Offset(size.width * 0.32, size.height * 0.92),
+      cablePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _EthernetLogoPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
 
 bool _isOnlineHost(DiscoveredHost host) {
   if (host.responseTime != null) return true;
@@ -89,7 +173,11 @@ class _ScanPageState extends State<ScanPage> {
   void initState() {
     super.initState();
     if (widget.autoStartScan) {
-      _initInterfaces();
+      // Render the first frame before starting potentially slow network discovery.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_initInterfaces());
+      });
     } else {
       _status = 'Idle';
     }
@@ -168,6 +256,18 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   Future<List<_InterfaceChoice>> _loadInterfaces() async {
+    if (Platform.isIOS) {
+      try {
+        final wifiIp = await NetworkInfo().getWifiIP().timeout(
+          const Duration(milliseconds: 800),
+          onTimeout: () => null,
+        );
+        if (wifiIp != null && wifiIp.isNotEmpty) {
+          return <_InterfaceChoice>[_InterfaceChoice('en0', wifiIp)];
+        }
+      } catch (_) {}
+    }
+
     var interfaces = await NetworkInterface.list(
       includeLoopback: false,
       includeLinkLocal: false,
@@ -199,8 +299,31 @@ class _ScanPageState extends State<ScanPage> {
         byName.entries
             .map((entry) => _InterfaceChoice(entry.key, entry.value))
             .toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
+          ..sort((a, b) {
+            final rankA = _interfaceSortRank(a.name);
+            final rankB = _interfaceSortRank(b.name);
+            if (rankA != rankB) return rankA.compareTo(rankB);
+            return a.name.compareTo(b.name);
+          });
     return choices;
+  }
+
+  int _interfaceSortRank(String name) {
+    final n = name.toLowerCase();
+    if (Platform.isAndroid) {
+      if (n.startsWith('wlan') || n.contains('wifi')) return 0;
+      if (n.startsWith('eth') || n.startsWith('en')) return 1;
+      if (n.startsWith('rmnet') ||
+          n.contains('usb') ||
+          n.contains('rndis') ||
+          n.contains('tun') ||
+          n.contains('v4-rmnet') ||
+          n.contains('dummy')) {
+        return 9;
+      }
+      return 5;
+    }
+    return 0;
   }
 
   Widget _buildInterfaceDropdown({required bool isCompact}) {
@@ -258,11 +381,16 @@ class _ScanPageState extends State<ScanPage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        title: const SizedBox.shrink(),
+        title: Row(
+          children: [
+            const MultiScanLogo(size: 24),
+            const SizedBox(width: 10),
+            Text('MultiScan', style: Theme.of(context).textTheme.titleMedium),
+          ],
+        ),
         actions: const [],
-        toolbarHeight: 0,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
+        toolbarHeight: 56,
+        elevation: 0.5,
         automaticallyImplyLeading: false,
       ),
       body: Column(
@@ -422,10 +550,20 @@ class _ScanPageState extends State<ScanPage> {
           Expanded(
             child: _hosts.isEmpty
                 ? Center(
-                    child: Text(
-                      _scanning
-                          ? 'Scanning...'
-                          : 'No hosts found. Try again or check your network.',
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MultiScanLogo(
+                          size: 72,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _scanning
+                              ? 'Scanning...'
+                              : 'No hosts found. Try again or check your network.',
+                        ),
+                      ],
                     ),
                   )
                 : _HostTable(
@@ -443,7 +581,7 @@ class _ScanPageState extends State<ScanPage> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _scanning ? null : _startScan,
-        icon: const Icon(Icons.wifi_tethering),
+        icon: const MultiScanLogo(size: 18),
         label: Text(_scanning ? 'Scanning...' : 'Scan LAN'),
       ),
     );
@@ -760,32 +898,45 @@ class _ScanPageState extends State<ScanPage> {
     bool fastStart = false,
   }) {
     final factor = (doubleTimeouts ? 2.0 : 1.0) * _timeoutBump;
+    final isAndroid = Platform.isAndroid;
+    final isIOS = Platform.isIOS;
     final isMobile = Platform.isAndroid || Platform.isIOS;
     final cores = math.max(1, Platform.numberOfProcessors);
     final reserved = math.max(1, cores - 1);
-    final scale = isMobile ? 4 : 8;
-    final minParallel = isMobile ? 16 : 32;
-    final maxParallel = isMobile ? 64 : 128;
+    final scale = isAndroid ? 4 : (isMobile ? 4 : 8);
+    final minParallel = isAndroid ? 16 : (isMobile ? 16 : 32);
+    final maxParallel = isAndroid ? 48 : (isIOS ? 96 : (isMobile ? 64 : 128));
     final parallelBase = math.max(
       minParallel,
       math.min(maxParallel, reserved * scale),
     );
-    final parallel = fastStart ? math.max(12, parallelBase ~/ 2) : parallelBase;
-    final pingScale = fastStart ? 0.70 : 0.85;
+    final parallel = isAndroid
+        ? (fastStart ? math.max(16, parallelBase - 8) : parallelBase)
+        : (isIOS
+              ? (fastStart
+                    ? math.max(32, math.min(96, parallelBase))
+                    : math.max(24, math.min(80, parallelBase)))
+              : (fastStart ? math.max(12, parallelBase ~/ 2) : parallelBase));
+    final pingScale = isAndroid
+        ? (fastStart ? 1.00 : 1.10)
+        : (fastStart ? 0.70 : 0.85);
+    final maxHostsPerInterface = isAndroid ? 254 : 256;
     final pingTimeout = Duration(
       milliseconds: (_basePing.inMilliseconds * factor * pingScale)
           .round()
-          .clamp(350, 1200),
+          .clamp(isAndroid ? 320 : 350, isAndroid ? 1400 : 1200),
     );
     final mdnsWindow = Duration(
       milliseconds: (_baseMdns.inMilliseconds * factor * 0.85).round().clamp(
-        300,
-        1500,
+        isAndroid ? 250 : 300,
+        isAndroid ? 900 : 1500,
       ),
     );
     final selectedInterface = _selectedInterfaceName;
+    final androidAggressive = isAndroid;
     return LanScanner(
-      debugTiming: kDebugMode || _scanDebugTimingOverride,
+      debugTiming: _scanDebugTimingOverride || (kDebugMode && !isAndroid),
+      maxHostsPerInterface: maxHostsPerInterface,
       enableHttpScan: false,
       deferHttpScan: false,
       parallelRequests: parallel,
@@ -794,22 +945,26 @@ class _ScanPageState extends State<ScanPage> {
       enableReverseDns: true,
       timeoutFactor: factor,
       enableSsdp: true,
-      enableNbnsBroadcast: !fastStart,
+      enableNbnsBroadcast: !fastStart && !androidAggressive,
       enableTlsHostnames: false,
-      enableWsDiscovery: !fastStart,
-      enableLlmnr: !fastStart,
-      enableMdnsReverse: !fastStart,
+      enableWsDiscovery: !fastStart && !androidAggressive,
+      enableLlmnr: !fastStart && !androidAggressive,
+      enableMdnsReverse: !fastStart && !androidAggressive,
       enableSshBanner: false,
       enableTelnetBanner: false,
       enableSmb1: false,
-      enableDnsSearchDomain: !fastStart,
+      enableDnsSearchDomain: !fastStart && !androidAggressive,
       enableSnmpNames: false,
       enableSmbNames: false,
       includeAdvancedHostnames: _includeAdvancedHostnames,
       allowReverseDnsFailure: true,
       allowPingFailure: true,
-      enableTcpReachability: false,
-      reverseDnsTimeoutMs: fastStart ? 450 : 600,
+      enableTcpReachability: isIOS,
+      reverseDnsTimeoutMs: fastStart ? 900 : 1200,
+      enableArpCache: !androidAggressive,
+      enableNdp: !androidAggressive,
+      enableIpv6Discovery: !androidAggressive,
+      enableIpv6Ping: !androidAggressive,
       pingTimeout: pingTimeout,
       mdnsListenWindow: mdnsWindow,
       preferredInterfaceNames: selectedInterface == null

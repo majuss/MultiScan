@@ -25,21 +25,32 @@ abstract class _LanScannerCoreBase {
     this.mdnsListenWindow = ScannerDefaults.mdnsListenWindow,
     this.enableMdns = ScannerDefaults.enableMdns, // Name/Other Names + Sources
     this.enableNbns = ScannerDefaults.enableNbns, // Name/Other Names + Sources
-    this.enableReverseDns = ScannerDefaults.enableReverseDns, // Name/Other Names + Sources
+    this.enableReverseDns =
+        ScannerDefaults.enableReverseDns, // Name/Other Names + Sources
     this.timeoutFactor = ScannerDefaults.timeoutFactor,
     this.enableIpv6Ping = ScannerDefaults.enableIpv6Ping,
     this.enableSsdp = ScannerDefaults.enableSsdp, // Name/Other Names + Sources
-    this.enableNbnsBroadcast = ScannerDefaults.enableNbnsBroadcast, // Name/Other Names + Sources
-    this.enableTlsHostnames = ScannerDefaults.enableTlsHostnames, // Name/Other Names + Sources
-    this.enableWsDiscovery = ScannerDefaults.enableWsDiscovery, // Name/Other Names + Sources
-    this.enableLlmnr = ScannerDefaults.enableLlmnr, // Name/Other Names + Sources
-    this.enableMdnsReverse = ScannerDefaults.enableMdnsReverse, // Name/Other Names + Sources
-    this.enableSshBanner = ScannerDefaults.enableSshBanner, // Name/Other Names + Sources
-    this.enableTelnetBanner = ScannerDefaults.enableTelnetBanner, // Name/Other Names + Sources
+    this.enableNbnsBroadcast =
+        ScannerDefaults.enableNbnsBroadcast, // Name/Other Names + Sources
+    this.enableTlsHostnames =
+        ScannerDefaults.enableTlsHostnames, // Name/Other Names + Sources
+    this.enableWsDiscovery =
+        ScannerDefaults.enableWsDiscovery, // Name/Other Names + Sources
+    this.enableLlmnr =
+        ScannerDefaults.enableLlmnr, // Name/Other Names + Sources
+    this.enableMdnsReverse =
+        ScannerDefaults.enableMdnsReverse, // Name/Other Names + Sources
+    this.enableSshBanner =
+        ScannerDefaults.enableSshBanner, // Name/Other Names + Sources
+    this.enableTelnetBanner =
+        ScannerDefaults.enableTelnetBanner, // Name/Other Names + Sources
     this.enableSmb1 = ScannerDefaults.enableSmb1, // Name/Other Names + Sources
-    this.enableDnsSearchDomain = ScannerDefaults.enableDnsSearchDomain, // Name/Other Names + Sources
-    this.enableSnmpNames = ScannerDefaults.enableSnmpNames, // Name/Other Names + Sources
-    this.enableSmbNames = ScannerDefaults.enableSmbNames, // Name/Other Names + Sources
+    this.enableDnsSearchDomain =
+        ScannerDefaults.enableDnsSearchDomain, // Name/Other Names + Sources
+    this.enableSnmpNames =
+        ScannerDefaults.enableSnmpNames, // Name/Other Names + Sources
+    this.enableSmbNames =
+        ScannerDefaults.enableSmbNames, // Name/Other Names + Sources
     this.includeAdvancedHostnames = ScannerDefaults.includeAdvancedHostnames,
     this.debugTiming = ScannerDefaults.debugTiming,
     this.enableArpCache = ScannerDefaults.enableArpCache,
@@ -53,7 +64,8 @@ abstract class _LanScannerCoreBase {
     this.ignoreMdnsErrors = ScannerDefaults.ignoreMdnsErrors,
     this.reverseDnsTimeoutMs,
     this.preferredInterfaceNames = ScannerDefaults.preferredInterfaceNames,
-    this.requireReverseDnsForProbes = ScannerDefaults.requireReverseDnsForProbes,
+    this.requireReverseDnsForProbes =
+        ScannerDefaults.requireReverseDnsForProbes,
   });
   final int maxHostsPerInterface;
   final int parallelRequests;
@@ -113,21 +125,32 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
     super.mdnsListenWindow = ScannerDefaults.mdnsListenWindow,
     super.enableMdns = ScannerDefaults.enableMdns, // Name/Other Names + Sources
     super.enableNbns = ScannerDefaults.enableNbns, // Name/Other Names + Sources
-    super.enableReverseDns = ScannerDefaults.enableReverseDns, // Name/Other Names + Sources
+    super.enableReverseDns =
+        ScannerDefaults.enableReverseDns, // Name/Other Names + Sources
     super.timeoutFactor = ScannerDefaults.timeoutFactor,
     super.enableIpv6Ping = ScannerDefaults.enableIpv6Ping,
     super.enableSsdp = ScannerDefaults.enableSsdp, // Name/Other Names + Sources
-    super.enableNbnsBroadcast = ScannerDefaults.enableNbnsBroadcast, // Name/Other Names + Sources
-    super.enableTlsHostnames = ScannerDefaults.enableTlsHostnames, // Name/Other Names + Sources
-    super.enableWsDiscovery = ScannerDefaults.enableWsDiscovery, // Name/Other Names + Sources
-    super.enableLlmnr = ScannerDefaults.enableLlmnr, // Name/Other Names + Sources
-    super.enableMdnsReverse = ScannerDefaults.enableMdnsReverse, // Name/Other Names + Sources
-    super.enableSshBanner = ScannerDefaults.enableSshBanner, // Name/Other Names + Sources
-    super.enableTelnetBanner = ScannerDefaults.enableTelnetBanner, // Name/Other Names + Sources
+    super.enableNbnsBroadcast =
+        ScannerDefaults.enableNbnsBroadcast, // Name/Other Names + Sources
+    super.enableTlsHostnames =
+        ScannerDefaults.enableTlsHostnames, // Name/Other Names + Sources
+    super.enableWsDiscovery =
+        ScannerDefaults.enableWsDiscovery, // Name/Other Names + Sources
+    super.enableLlmnr =
+        ScannerDefaults.enableLlmnr, // Name/Other Names + Sources
+    super.enableMdnsReverse =
+        ScannerDefaults.enableMdnsReverse, // Name/Other Names + Sources
+    super.enableSshBanner =
+        ScannerDefaults.enableSshBanner, // Name/Other Names + Sources
+    super.enableTelnetBanner =
+        ScannerDefaults.enableTelnetBanner, // Name/Other Names + Sources
     super.enableSmb1 = ScannerDefaults.enableSmb1, // Name/Other Names + Sources
-    super.enableDnsSearchDomain = ScannerDefaults.enableDnsSearchDomain, // Name/Other Names + Sources
-    super.enableSnmpNames = ScannerDefaults.enableSnmpNames, // Name/Other Names + Sources
-    super.enableSmbNames = ScannerDefaults.enableSmbNames, // Name/Other Names + Sources
+    super.enableDnsSearchDomain =
+        ScannerDefaults.enableDnsSearchDomain, // Name/Other Names + Sources
+    super.enableSnmpNames =
+        ScannerDefaults.enableSnmpNames, // Name/Other Names + Sources
+    super.enableSmbNames =
+        ScannerDefaults.enableSmbNames, // Name/Other Names + Sources
     super.includeAdvancedHostnames = ScannerDefaults.includeAdvancedHostnames,
     super.debugTiming = ScannerDefaults.debugTiming,
     super.enableArpCache = ScannerDefaults.enableArpCache,
@@ -141,9 +164,9 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
     super.ignoreMdnsErrors = ScannerDefaults.ignoreMdnsErrors,
     super.reverseDnsTimeoutMs,
     super.preferredInterfaceNames = ScannerDefaults.preferredInterfaceNames,
-    super.requireReverseDnsForProbes = ScannerDefaults.requireReverseDnsForProbes,
+    super.requireReverseDnsForProbes =
+        ScannerDefaults.requireReverseDnsForProbes,
   });
-
 
   Future<List<DiscoveredHost>> scan({
     ProgressCallback? onProgress,
@@ -187,20 +210,28 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
       Future<Map<String, _MdnsInfo>>? mdnsFuture;
       if (enableMdns) {
         onProgress?.call('Listening for mDNS');
-        mdnsFuture = _measure('mdns', _listenMdns);
+        mdnsFuture = _measure('mdns', _listenMdns).catchError((err, stack) {
+          _debug('mdns listener failed: $err');
+          return <String, _MdnsInfo>{};
+        });
         _debug('mdns listener started');
       }
       Future<Map<String, Set<String>>>? ssdpFuture;
       if (enableSsdp) {
         onProgress?.call('Listening for SSDP');
-        ssdpFuture = _measure('ssdp', _listenSsdp);
+        ssdpFuture = _measure('ssdp', _listenSsdp).catchError((err, stack) {
+          _debug('ssdp listener failed: $err');
+          return <String, Set<String>>{};
+        });
         _debug('ssdp listener started');
       }
       Future<Map<String, String>>? nbnsBroadcastFuture;
       if (enableNbns && enableNbnsBroadcast) {
         onProgress?.call('Listening for NBNS broadcast');
-        nbnsBroadcastFuture =
-            _measure('nbns_broadcast', () => _listenNbnsBroadcast(interfaces));
+        nbnsBroadcastFuture = _measure(
+          'nbns_broadcast',
+          () => _listenNbnsBroadcast(interfaces),
+        );
         _debug('nbns broadcast listener started');
       }
       Future<Map<String, String>>? wsDiscoveryFuture;
@@ -227,19 +258,21 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
             'iface ${iface.name} ${iface.address.address}/${iface.prefixLength} (${ips.length} hosts)';
         await _timePhase(label, () async {
           onProgress?.call(
-              'Scanning ${ips.length} hosts on ${iface.address.address}/${iface.prefixLength}');
-          final detailed = await _concurrentMap<DiscoveredHost?, InternetAddress>(
-            ips,
-            parallelRequests,
-            (ip) => _probeHost(
-              ip,
-              arpCache: arpCache,
-              arpPingIps: arpPingIps,
-              mdnsNames: mdnsMap,
-              iface: iface,
-              onUpdate: onHost,
-            ),
+            'Scanning ${ips.length} hosts on ${iface.address.address}/${iface.prefixLength}',
           );
+          final detailed =
+              await _concurrentMap<DiscoveredHost?, InternetAddress>(
+                ips,
+                parallelRequests,
+                (ip) => _probeHost(
+                  ip,
+                  arpCache: arpCache,
+                  arpPingIps: arpPingIps,
+                  mdnsNames: mdnsMap,
+                  iface: iface,
+                  onUpdate: onHost,
+                ),
+              );
           hosts.addAll(detailed.nonNulls);
         });
       }
@@ -249,11 +282,13 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
         mdnsMap = await _timePhase('await mdns snapshot', () async {
           final mdnsTimer = Stopwatch()..start();
           final result = await mdnsAwait.timeout(
-              Duration(
-                  milliseconds:
-                      (ScannerDefaults.mdnsAwaitTimeoutBaseMs * timeoutFactor)
-                          .round()),
-              onTimeout: () => const {});
+            Duration(
+              milliseconds:
+                  (ScannerDefaults.mdnsAwaitTimeoutBaseMs * timeoutFactor)
+                      .round(),
+            ),
+            onTimeout: () => const {},
+          );
           _debug('phase mdns await took ${mdnsTimer.elapsedMilliseconds} ms');
           return result;
         });
@@ -265,11 +300,13 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
         final ssdpMap = await _timePhase('await ssdp snapshot', () async {
           final ssdpTimer = Stopwatch()..start();
           final result = await ssdpAwait.timeout(
-              Duration(
-                  milliseconds:
-                      (ScannerDefaults.ssdpAwaitTimeoutBaseMs * timeoutFactor)
-                          .round()),
-              onTimeout: () => const <String, Set<String>>{});
+            Duration(
+              milliseconds:
+                  (ScannerDefaults.ssdpAwaitTimeoutBaseMs * timeoutFactor)
+                      .round(),
+            ),
+            onTimeout: () => const <String, Set<String>>{},
+          );
           _debug('phase ssdp await took ${ssdpTimer.elapsedMilliseconds} ms');
           return result;
         });
@@ -278,18 +315,25 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
       }
       if (enableNbns && enableNbnsBroadcast && nbnsBroadcastFuture != null) {
         final nbnsAwait = nbnsBroadcastFuture;
-        final nbnsMap = await _timePhase('await nbns broadcast snapshot', () async {
-          final nbnsTimer = Stopwatch()..start();
-          final result = await nbnsAwait.timeout(
+        final nbnsMap = await _timePhase(
+          'await nbns broadcast snapshot',
+          () async {
+            final nbnsTimer = Stopwatch()..start();
+            final result = await nbnsAwait.timeout(
               Duration(
-                  milliseconds:
-                      (ScannerDefaults.nbnsBroadcastAwaitTimeoutBaseMs *
-                              timeoutFactor)
-                          .round()),
-              onTimeout: () => const {});
-          _debug('phase nbns broadcast await took ${nbnsTimer.elapsedMilliseconds} ms');
-          return result;
-        });
+                milliseconds:
+                    (ScannerDefaults.nbnsBroadcastAwaitTimeoutBaseMs *
+                            timeoutFactor)
+                        .round(),
+              ),
+              onTimeout: () => const {},
+            );
+            _debug(
+              'phase nbns broadcast await took ${nbnsTimer.elapsedMilliseconds} ms',
+            );
+            return result;
+          },
+        );
         onProgress?.call('NBNS broadcast snapshot ready (${nbnsMap.length})');
         _mergeNamedMap(hosts, nbnsMap, 'NBNS-BCAST', onHost);
       }
@@ -298,12 +342,14 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
         final wsdMap = await _timePhase('await wsd snapshot', () async {
           final wsdTimer = Stopwatch()..start();
           final result = await wsdAwait.timeout(
-              Duration(
-                  milliseconds:
-                      (ScannerDefaults.wsDiscoveryAwaitTimeoutBaseMs *
-                              timeoutFactor)
-                          .round()),
-              onTimeout: () => const {});
+            Duration(
+              milliseconds:
+                  (ScannerDefaults.wsDiscoveryAwaitTimeoutBaseMs *
+                          timeoutFactor)
+                      .round(),
+            ),
+            onTimeout: () => const {},
+          );
           _debug('phase wsd await took ${wsdTimer.elapsedMilliseconds} ms');
           return result;
         });
@@ -320,9 +366,11 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
           await _mergeNdp(hosts, ndp, onHost);
         });
         _debug(
-            'NDP merge completed in ${hosts.where((h) => (h.ipv6 ?? '').isNotEmpty).length} hosts with IPv6');
+          'NDP merge completed in ${hosts.where((h) => (h.ipv6 ?? '').isNotEmpty).length} hosts with IPv6',
+        );
         onProgress?.call(
-            'IPv6 neighbors merged (+${hosts.where((h) => (h.ipv6 ?? '').isNotEmpty).length - ipv6Before})');
+          'IPv6 neighbors merged (+${hosts.where((h) => (h.ipv6 ?? '').isNotEmpty).length - ipv6Before})',
+        );
       } else {
         onProgress?.call('IPv6 neighbor scan disabled');
       }
@@ -338,21 +386,23 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
       _scheduleHostnameRefresh(hosts, onHost);
       _scheduleLlmnrRefresh(hosts, onHost);
       _scheduleMdnsReverseRefresh(hosts, onHost);
-      if (enableDnsSearchDomain &&
-          searchDomainsFuture != null) {
+      if (enableDnsSearchDomain && searchDomainsFuture != null) {
         final domainsAwait = searchDomainsFuture;
         Future<void>(() async {
           await _timePhase('await dns search/servers', () async {
             final dnsTimer = Stopwatch()..start();
             final domains = await domainsAwait.timeout(
-                Duration(
-                    milliseconds:
-                        (ScannerDefaults.dnsSearchDomainsAwaitTimeoutBaseMs *
-                                timeoutFactor)
-                            .round()),
-                onTimeout: () => const <String>[]);
+              Duration(
+                milliseconds:
+                    (ScannerDefaults.dnsSearchDomainsAwaitTimeoutBaseMs *
+                            timeoutFactor)
+                        .round(),
+              ),
+              onTimeout: () => const <String>[],
+            );
             _debug(
-                'phase dns search/servers await took ${dnsTimer.elapsedMilliseconds} ms');
+              'phase dns search/servers await took ${dnsTimer.elapsedMilliseconds} ms',
+            );
             _scheduleDnsSuffixRefresh(hosts, onHost, domains);
             _scheduleDnsSrvRefresh(hosts, onHost, domains, dnsServers);
           });
@@ -360,7 +410,8 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
       }
       _scheduleHttpRefresh(hosts, onHost);
       _debug(
-          'probe timings ms: dns=${_spanMs(_reverseDnsSpan)} icmp=${_spanMs(_icmpSpan)} tcp=${_spanMs(_tcpSpan)} http=${_spanMs(_httpTitleSpan)} hints=${_spanMs(_httpHintsSpan)} nbns=${_spanMs(_nbnsSpan)} tls=${_spanMs(_tlsSpan)}');
+        'probe timings ms: dns=${_spanMs(_reverseDnsSpan)} icmp=${_spanMs(_icmpSpan)} tcp=${_spanMs(_tcpSpan)} http=${_spanMs(_httpTitleSpan)} hints=${_spanMs(_httpHintsSpan)} nbns=${_spanMs(_nbnsSpan)} tls=${_spanMs(_tlsSpan)}',
+      );
       _debug('scan total ${totalTimer.elapsedMilliseconds} ms');
       return hosts;
     });

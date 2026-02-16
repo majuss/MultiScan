@@ -9,6 +9,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       if (added) list.add(info);
       return added;
     }
+
     if (preferredInterfaceNames.isNotEmpty &&
         _cachedInterfaces != null &&
         _cachedInterfaces!.isNotEmpty) {
@@ -22,14 +23,14 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final wifiAttempts = preferredInterfaceNames.isNotEmpty ? 5 : 1;
     for (var attempt = 0; attempt < wifiAttempts; attempt++) {
       final wifiResult = await Future.wait<String?>([
-        networkInfo
-            .getWifiIP()
-            .timeout(ScannerDefaults.interfaceInfoTimeout,
-                onTimeout: () => null),
-        networkInfo
-            .getWifiSubmask()
-            .timeout(ScannerDefaults.interfaceInfoTimeout,
-                onTimeout: () => null),
+        networkInfo.getWifiIP().timeout(
+          ScannerDefaults.interfaceInfoTimeout,
+          onTimeout: () => null,
+        ),
+        networkInfo.getWifiSubmask().timeout(
+          ScannerDefaults.interfaceInfoTimeout,
+          onTimeout: () => null,
+        ),
       ]);
       wifiIp = wifiResult[0];
       wifiMask = wifiResult[1];
@@ -55,29 +56,33 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         for (final addr in iface.addresses) {
           if (addr.type != InternetAddressType.IPv4) continue;
           final wifi = wifiInterface;
-          final fromWifi =
-              wifi != null && wifi.address.address == addr.address;
+          final fromWifi = wifi != null && wifi.address.address == addr.address;
           final prefix = fromWifi ? wifi.prefixLength : 24;
-          final added = addInterface(InterfaceInfo(
-            name: iface.name,
-            address: addr,
-            prefixLength: prefix,
-          ));
+          final added = addInterface(
+            InterfaceInfo(
+              name: iface.name,
+              address: addr,
+              prefixLength: prefix,
+            ),
+          );
           if (fromWifi && added) wifiInterface = null;
         }
       }
       if (list.isEmpty && wifiInterface != null) {
-        addInterface(InterfaceInfo(
-          name: preferredInterfaceNames.first,
-          address: wifiInterface.address,
-          prefixLength: wifiInterface.prefixLength,
-        ));
+        addInterface(
+          InterfaceInfo(
+            name: preferredInterfaceNames.first,
+            address: wifiInterface.address,
+            prefixLength: wifiInterface.prefixLength,
+          ),
+        );
       }
       if (list.isNotEmpty) {
         _cachedInterfaces = List<InterfaceInfo>.from(list);
       }
       _debug(
-          'interfaces collected: ${list.map((i) => '${i.name} ${i.address.address}/${i.prefixLength}').join(', ')}');
+        'interfaces collected: ${list.map((i) => '${i.name} ${i.address.address}/${i.prefixLength}').join(', ')}',
+      );
       return list;
     }
 
@@ -89,14 +94,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       for (final addr in iface.addresses) {
         if (addr.type != InternetAddressType.IPv4) continue;
         final wifi = wifiInterface;
-        final fromWifi =
-            wifi != null && wifi.address.address == addr.address;
+        final fromWifi = wifi != null && wifi.address.address == addr.address;
         final prefix = fromWifi ? wifi.prefixLength : 24;
-        final added = addInterface(InterfaceInfo(
-          name: iface.name,
-          address: addr,
-          prefixLength: prefix,
-        ));
+        final added = addInterface(
+          InterfaceInfo(name: iface.name, address: addr, prefixLength: prefix),
+        );
         if (fromWifi && added) wifiInterface = null;
       }
     }
@@ -114,7 +116,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     }
 
     _debug(
-        'interfaces collected: ${list.map((i) => '${i.name} ${i.address.address}/${i.prefixLength}').join(', ')}');
+      'interfaces collected: ${list.map((i) => '${i.name} ${i.address.address}/${i.prefixLength}').join(', ')}',
+    );
     return list;
   }
 
@@ -125,10 +128,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     var interfaces = await NetworkInterface.list(
       includeLoopback: false,
       includeLinkLocal: false,
-    ).timeout(ScannerDefaults.interfaceListTimeout,
-        onTimeout: () => const []);
+    ).timeout(ScannerDefaults.interfaceListTimeout, onTimeout: () => const []);
     _debug(
-        'interfaces primary=${interfaces.length} wifiIp=$wifiIp wifiMask=$wifiMask');
+      'interfaces primary=${interfaces.length} wifiIp=$wifiIp wifiMask=$wifiMask',
+    );
     if (interfaces.isEmpty) {
       try {
         interfaces = await NetworkInterface.list(
@@ -158,18 +161,24 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Iterable<InternetAddress> _enumerateSubnet(
-      InternetAddress address, int prefixLength) {
+    InternetAddress address,
+    int prefixLength,
+  ) {
     final prefix = prefixLength;
     // Exclude network and broadcast: (2^hostbits - 2).
     final maxHosts = max(0, (1 << (32 - prefix)) - 2);
-    // For /24 and smaller, scan full range; for larger, cap to avoid huge scans.
-    final hostCount = prefix >= 24 ? maxHosts : min(maxHosts, maxHostsPerInterface);
+    // Keep desktop behavior of scanning full /24 networks.
+    // On Android, cap even /24 scans to avoid slow, battery-heavy sweeps.
+    final shouldCap = Platform.isAndroid || prefix < 24;
+    final hostCount = shouldCap
+        ? min(maxHosts, maxHostsPerInterface)
+        : maxHosts;
     final base = _ipv4ToInt(address);
     final shift = 32 - prefix;
     final network = (base >> shift) << shift;
-    return Iterable<int>.generate(hostCount)
-        .map((i) => network + i + 1)
-        .map(_intToIPv4);
+    return Iterable<int>.generate(
+      hostCount,
+    ).map((i) => network + i + 1).map(_intToIPv4);
   }
 
   int _maskToPrefix(String? mask) {
@@ -259,7 +268,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final shouldPing = _shouldPingHost(ip, arpPingIps);
     String? reverseDnsName;
     if (enableReverseDns) {
-      final gateReverseDns = !allowReverseDnsFailure || requireReverseDnsForProbes;
+      final gateReverseDns =
+          !allowReverseDnsFailure || requireReverseDnsForProbes;
       if (gateReverseDns) {
         try {
           final dnsHost = await _reverseDnsName(ip);
@@ -276,11 +286,13 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
           return null;
         }
       } else {
-        _reverseDnsName(ip).then((dnsHost) {
-          if (dnsHost != null && dnsHost.isNotEmpty) {
-            recordName(dnsHost, 'DNS');
-          }
-        }).catchError((_) {});
+        _reverseDnsName(ip)
+            .then((dnsHost) {
+              if (dnsHost != null && dnsHost.isNotEmpty) {
+                recordName(dnsHost, 'DNS');
+              }
+            })
+            .catchError((_) {});
       }
     }
 
@@ -328,10 +340,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     // Kick off slower probes concurrently so each host is bounded by the slowest probe instead of a chain of timeouts.
     final nbnsFuture = enableNbns ? _queryNbnsName(ip) : null;
     final tlsFuture = enableTlsHostnames ? _tlsCommonName(ip) : null;
-    final httpTitleFuture =
-        enableHttpScan && !deferHttpScan
-            ? _httpTitle(ip, includeAdvancedHostnames)
-            : null;
+    final httpTitleFuture = enableHttpScan && !deferHttpScan
+        ? _httpTitle(ip, includeAdvancedHostnames)
+        : null;
 
     if (httpTitleFuture != null) {
       try {
@@ -354,32 +365,40 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
     // SNMP sysName (best-effort, common on routers/APs with community "public").
     if (enableSnmpNames) {
-      _snmpNames(ip).then((names) {
-        for (final name in names) {
-          recordName(name, 'SNMP');
-        }
-      }).catchError((_) {});
+      _snmpNames(ip)
+          .then((names) {
+            for (final name in names) {
+              recordName(name, 'SNMP');
+            }
+          })
+          .catchError((_) {});
     }
 
     // SMB NTLM target info (NetBIOS/DNS name hints).
     if (enableSmbNames) {
-      _smbNames(ip).then((names) {
-        for (final name in names) {
-          recordName(name, 'SMB');
-        }
-      }).catchError((_) {});
+      _smbNames(ip)
+          .then((names) {
+            for (final name in names) {
+              recordName(name, 'SMB');
+            }
+          })
+          .catchError((_) {});
     }
 
     if (enableSshBanner) {
-      _sshBannerName(ip).then((name) {
-        if (name != null) recordName(name, 'SSH');
-      }).catchError((_) {});
+      _sshBannerName(ip)
+          .then((name) {
+            if (name != null) recordName(name, 'SSH');
+          })
+          .catchError((_) {});
     }
 
     if (enableTelnetBanner) {
-      _telnetBannerName(ip).then((name) {
-        if (name != null) recordName(name, 'Telnet');
-      }).catchError((_) {});
+      _telnetBannerName(ip)
+          .then((name) {
+            if (name != null) recordName(name, 'Telnet');
+          })
+          .catchError((_) {});
     }
 
     // TLS certificate CN/SAN (best-effort; some devices embed hostname).
@@ -450,12 +469,14 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
     // Drop hosts that only have weak signals (DNS/ICMP/ARP) without any metadata.
     final weakSignals = {'DNS', 'ICMP', 'ICMPv6', 'ARP'};
-    final informativeSource =
-        sources.difference(weakSignals).isNotEmpty; // e.g., NBNS, mDNS
+    final informativeSource = sources
+        .difference(weakSignals)
+        .isNotEmpty; // e.g., NBNS, mDNS
     if (hostname != null) {
       otherNames.remove(hostname);
     }
-    final hasSignal = mac != null ||
+    final hasSignal =
+        mac != null ||
         informativeSource ||
         latency != null ||
         (hostname != null &&
@@ -482,12 +503,15 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final map = <String, _MdnsInfo>{};
     final client = MDnsClient();
     final perServiceBudget = Duration(
-        milliseconds:
-            ((mdnsListenWindow.inMilliseconds *
-                        ScannerDefaults.mdnsServiceBudgetMultiplier)
-                    .clamp(ScannerDefaults.mdnsServiceBudgetMinMs,
-                        ScannerDefaults.mdnsServiceBudgetMaxMs))
-                .toInt());
+      milliseconds:
+          ((mdnsListenWindow.inMilliseconds *
+                      ScannerDefaults.mdnsServiceBudgetMultiplier)
+                  .clamp(
+                    ScannerDefaults.mdnsServiceBudgetMinMs,
+                    ScannerDefaults.mdnsServiceBudgetMaxMs,
+                  ))
+              .toInt(),
+    );
     try {
       await client.start();
       final services = <String>{};
@@ -495,11 +519,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       try {
         ptrSub = client
             .lookup<PtrResourceRecord>(
-                ResourceRecordQuery.serverPointer('_services._dns-sd._udp.local'))
-            .listen(
-              (ptr) => services.add(ptr.domainName),
-              onError: (_) {},
-            );
+              ResourceRecordQuery.serverPointer('_services._dns-sd._udp.local'),
+            )
+            .listen((ptr) => services.add(ptr.domainName), onError: (_) {});
       } catch (_) {
         if (ignoreMdnsErrors) return map;
         rethrow;
@@ -520,8 +542,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       ];
       services.addAll(fallbackServices);
 
-      final lookups = services.map((service) =>
-          _collectMdnsForService(client, service, perServiceBudget));
+      final lookups = services.map(
+        (service) => _collectMdnsForService(client, service, perServiceBudget),
+      );
       final results = await Future.wait(lookups);
       for (final result in results) {
         map.addAll(result);
@@ -537,7 +560,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<Map<String, _MdnsInfo>> _collectMdnsForService(
-      MDnsClient client, String service, Duration budget) async {
+    MDnsClient client,
+    String service,
+    Duration budget,
+  ) async {
     final map = <String, _MdnsInfo>{};
     final ipv6ByHost = <String, String>{};
     final aliasesByHost = <String, Set<String>>{};
@@ -564,8 +590,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       final srvForInstance = await client
           .lookup<SrvResourceRecord>(ResourceRecordQuery.service(instance))
           .toList()
-          .timeout(
-              timeLeft, onTimeout: () => const <SrvResourceRecord>[]);
+          .timeout(timeLeft, onTimeout: () => const <SrvResourceRecord>[]);
       for (final srv in srvForInstance) {
         if (friendly != null && friendly.isNotEmpty) {
           aliasesByHost.putIfAbsent(srv.target, () => <String>{}).add(friendly);
@@ -578,8 +603,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         final txtRecords = await client
             .lookup<TxtResourceRecord>(ResourceRecordQuery.text(instance))
             .toList()
-            .timeout(
-                txtTimeLeft, onTimeout: () => const <TxtResourceRecord>[]);
+            .timeout(txtTimeLeft, onTimeout: () => const <TxtResourceRecord>[]);
         for (final txt in txtRecords) {
           final extra = _extractTxtName(txt.text);
           if (extra != null && extra.isNotEmpty) {
@@ -603,10 +627,13 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
       final addresses = await client
           .lookup<IPAddressResourceRecord>(
-              ResourceRecordQuery.addressIPv4(srv.target))
+            ResourceRecordQuery.addressIPv4(srv.target),
+          )
           .toList()
           .timeout(
-              timeLeft, onTimeout: () => const <IPAddressResourceRecord>[]);
+            timeLeft,
+            onTimeout: () => const <IPAddressResourceRecord>[],
+          );
       for (final addr in addresses) {
         map[addr.address.address] = _MdnsInfo(
           name: srv.target,
@@ -622,18 +649,23 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         }
         final ipv6Records = await client
             .lookup<IPAddressResourceRecord>(
-                ResourceRecordQuery.addressIPv6(srv.target))
+              ResourceRecordQuery.addressIPv6(srv.target),
+            )
             .toList()
             .timeout(
-                v6TimeLeft, onTimeout: () => const <IPAddressResourceRecord>[]);
+              v6TimeLeft,
+              onTimeout: () => const <IPAddressResourceRecord>[],
+            );
         for (final addr in ipv6Records) {
           ipv6ByHost[srv.target] = addr.address.address;
           map.putIfAbsent(
-              addr.address.address,
-              () => _MdnsInfo(
-                  name: srv.target,
-                  ipv6: addr.address.address,
-                  aliases: aliasesByHost[srv.target] ?? const <String>{}));
+            addr.address.address,
+            () => _MdnsInfo(
+              name: srv.target,
+              ipv6: addr.address.address,
+              aliases: aliasesByHost[srv.target] ?? const <String>{},
+            ),
+          );
         }
       }
     }
@@ -651,23 +683,28 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<String?> _mdnsReverseLookup(
-      MDnsClient client, InternetAddress ip) async {
+    MDnsClient client,
+    InternetAddress ip,
+  ) async {
     final ptrName = _ipv4ToPtrName(ip);
     if (ptrName == null) return null;
     try {
       final records = await client
-          .lookup<PtrResourceRecord>(
-              ResourceRecordQuery.serverPointer(ptrName))
+          .lookup<PtrResourceRecord>(ResourceRecordQuery.serverPointer(ptrName))
           .handleError((_) {})
           .toList()
           .timeout(
-              Duration(
-                  milliseconds: (ScannerDefaults.mdnsReverseLookupBaseMs *
-                          timeoutFactor)
+            Duration(
+              milliseconds:
+                  (ScannerDefaults.mdnsReverseLookupBaseMs * timeoutFactor)
                       .round()
-                      .clamp(ScannerDefaults.mdnsReverseLookupMinMs,
-                          ScannerDefaults.mdnsReverseLookupMaxMs)),
-              onTimeout: () => const <PtrResourceRecord>[]);
+                      .clamp(
+                        ScannerDefaults.mdnsReverseLookupMinMs,
+                        ScannerDefaults.mdnsReverseLookupMaxMs,
+                      ),
+            ),
+            onTimeout: () => const <PtrResourceRecord>[],
+          );
       if (records.isEmpty) return null;
       return records.first.domainName;
     } catch (_) {
@@ -689,33 +726,37 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       final responses = <String, String>{};
       final completer = Completer<void>();
-      final listenWindow =
-          Duration(
-              milliseconds:
-                  (ScannerDefaults.ssdpListenWindowBaseMs * timeoutFactor)
-                      .round()
-                      .clamp(ScannerDefaults.ssdpListenWindowMinMs,
-                          ScannerDefaults.ssdpListenWindowMaxMs));
+      final listenWindow = Duration(
+        milliseconds: (ScannerDefaults.ssdpListenWindowBaseMs * timeoutFactor)
+            .round()
+            .clamp(
+              ScannerDefaults.ssdpListenWindowMinMs,
+              ScannerDefaults.ssdpListenWindowMaxMs,
+            ),
+      );
 
       final timer = Timer(listenWindow, () {
         if (!completer.isCompleted) completer.complete();
         socket?.close();
       });
 
-      socket.listen((event) {
-        if (event != RawSocketEvent.read) return;
-        final packet = socket?.receive();
-        if (packet == null) return;
-        final payload = utf8.decode(packet.data, allowMalformed: true);
-        final headers = _parseSsdpHeaders(payload);
-        final location = headers['location'];
-        if (location == null || location.isEmpty) return;
-        responses[packet.address.address] = location;
-      }, onError: (_) {
-        if (!completer.isCompleted) completer.complete();
-        timer.cancel();
-        socket?.close();
-      });
+      socket.listen(
+        (event) {
+          if (event != RawSocketEvent.read) return;
+          final packet = socket?.receive();
+          if (packet == null) return;
+          final payload = utf8.decode(packet.data, allowMalformed: true);
+          final headers = _parseSsdpHeaders(payload);
+          final location = headers['location'];
+          if (location == null || location.isEmpty) return;
+          responses[packet.address.address] = location;
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete();
+          timer.cancel();
+          socket?.close();
+        },
+      );
 
       final msearch = [
         'M-SEARCH * HTTP/1.1',
@@ -739,11 +780,12 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       final entries = responses.entries.toList();
       if (entries.isEmpty) return map;
 
-      final names = await _concurrentMap<Set<String>?, MapEntry<String, String>>(
-        entries,
-        8,
-        (entry) => _fetchSsdpNames(entry.value),
-      );
+      final names =
+          await _concurrentMap<Set<String>?, MapEntry<String, String>>(
+            entries,
+            8,
+            (entry) => _fetchSsdpNames(entry.value),
+          );
       for (var i = 0; i < entries.length; i++) {
         final nameSet = names[i];
         if (nameSet == null || nameSet.isEmpty) continue;
@@ -774,43 +816,46 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final names = <String>{};
     final timeoutMs = (ScannerDefaults.ssdpFetchTimeoutBaseMs * timeoutFactor)
         .round()
-        .clamp(ScannerDefaults.ssdpFetchTimeoutMinMs,
-            ScannerDefaults.ssdpFetchTimeoutMaxMs);
+        .clamp(
+          ScannerDefaults.ssdpFetchTimeoutMinMs,
+          ScannerDefaults.ssdpFetchTimeoutMaxMs,
+        );
     final client = HttpClient()
       ..connectionTimeout = Duration(milliseconds: timeoutMs)
       ..badCertificateCallback = (cert, host, port) => true;
     try {
       final uri = Uri.parse(location);
-      final req = await client.getUrl(uri).timeout(Duration(milliseconds: timeoutMs));
+      final req = await client
+          .getUrl(uri)
+          .timeout(Duration(milliseconds: timeoutMs));
       final resp = await req.close().timeout(Duration(milliseconds: timeoutMs));
       final buffer = BytesBuilder();
-      await for (final chunk in resp.timeout(Duration(milliseconds: timeoutMs),
-          onTimeout: (sink) => sink.close())) {
+      await for (final chunk in resp.timeout(
+        Duration(milliseconds: timeoutMs),
+        onTimeout: (sink) => sink.close(),
+      )) {
         buffer.add(chunk);
         if (buffer.length > 60000) break;
       }
       final body = utf8.decode(buffer.takeBytes(), allowMalformed: true);
-      final friendly = RegExp(r'<friendlyName>([^<]{1,200})</friendlyName>',
-              caseSensitive: false)
-          .firstMatch(body)
-          ?.group(1)
-          ?.trim();
+      final friendly = RegExp(
+        r'<friendlyName>([^<]{1,200})</friendlyName>',
+        caseSensitive: false,
+      ).firstMatch(body)?.group(1)?.trim();
       if (friendly != null && friendly.isNotEmpty) {
         names.add(friendly);
       }
-      final model = RegExp(r'<modelName>([^<]{1,200})</modelName>',
-              caseSensitive: false)
-          .firstMatch(body)
-          ?.group(1)
-          ?.trim();
+      final model = RegExp(
+        r'<modelName>([^<]{1,200})</modelName>',
+        caseSensitive: false,
+      ).firstMatch(body)?.group(1)?.trim();
       if (model != null && model.isNotEmpty) {
         names.add(model);
       }
-      final presentation = RegExp(r'<presentationURL>([^<]{1,300})</presentationURL>',
-              caseSensitive: false)
-          .firstMatch(body)
-          ?.group(1)
-          ?.trim();
+      final presentation = RegExp(
+        r'<presentationURL>([^<]{1,300})</presentationURL>',
+        caseSensitive: false,
+      ).firstMatch(body)?.group(1)?.trim();
       if (presentation != null && presentation.isNotEmpty) {
         final url = _coercePresentationUrl(uri, presentation);
         final extra = await _httpHintsFromUrl(url);
@@ -862,8 +907,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   Future<Map<String, String>> _readArpCache() async {
     if (!enableArpCache) return {};
     final raw = await _platform.readArpCache(
-        _nonHostnameTimeout(
-            const Duration(milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs)));
+      _nonHostnameTimeout(
+        const Duration(milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs),
+      ),
+    );
     final map = <String, String>{};
     for (final entry in raw.entries) {
       final normalized = _normalizeMac(entry.value);
@@ -875,7 +922,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<Map<String, String>> _listenNbnsBroadcast(
-      List<InterfaceInfo> interfaces) async {
+    List<InterfaceInfo> interfaces,
+  ) async {
     final map = <String, String>{};
     if (interfaces.isEmpty) return map;
     RawDatagramSocket? socket;
@@ -883,30 +931,35 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       socket.broadcastEnabled = true;
       final completer = Completer<void>();
-      final listenWindow =
-          Duration(
-              milliseconds:
-                  (ScannerDefaults.nbnsBroadcastListenBaseMs * timeoutFactor)
-                      .round()
-                      .clamp(ScannerDefaults.nbnsBroadcastListenMinMs,
-                          ScannerDefaults.nbnsBroadcastListenMaxMs));
+      final listenWindow = Duration(
+        milliseconds:
+            (ScannerDefaults.nbnsBroadcastListenBaseMs * timeoutFactor)
+                .round()
+                .clamp(
+                  ScannerDefaults.nbnsBroadcastListenMinMs,
+                  ScannerDefaults.nbnsBroadcastListenMaxMs,
+                ),
+      );
       final timer = Timer(listenWindow, () {
         if (!completer.isCompleted) completer.complete();
         socket?.close();
       });
 
-      socket.listen((event) {
-        if (event != RawSocketEvent.read) return;
-        final packet = socket?.receive();
-        if (packet == null) return;
-        final name = _parseNbnsResponse(packet.data);
-        if (name == null || name.isEmpty) return;
-        map[packet.address.address] = name;
-      }, onError: (_) {
-        if (!completer.isCompleted) completer.complete();
-        timer.cancel();
-        socket?.close();
-      });
+      socket.listen(
+        (event) {
+          if (event != RawSocketEvent.read) return;
+          final packet = socket?.receive();
+          if (packet == null) return;
+          final name = _parseNbnsResponse(packet.data);
+          if (name == null || name.isEmpty) return;
+          map[packet.address.address] = name;
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete();
+          timer.cancel();
+          socket?.close();
+        },
+      );
 
       final query = _buildNbnsNodeStatusQuery();
       for (final iface in interfaces) {
@@ -934,7 +987,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   Future<List<NdpEntry>> _readNdpCache() async {
     return _platform.readNdpCache(
       _nonHostnameTimeout(
-          const Duration(milliseconds: ScannerDefaults.nonHostnameTimeoutNdpMs)),
+        const Duration(milliseconds: ScannerDefaults.nonHostnameTimeoutNdpMs),
+      ),
       normalizeMac: (raw) => _normalizeMac(raw),
       debug: _debug,
     );
@@ -943,14 +997,18 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   Future<String?> _resolveMacAddress(InternetAddress ip) async {
     if (!enableArpCache) return null;
     final result = await _platform.resolveMacAddress(
-        ip,
-        _nonHostnameTimeout(
-            const Duration(milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs)));
+      ip,
+      _nonHostnameTimeout(
+        const Duration(milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs),
+      ),
+    );
     return result == null ? null : _normalizeMac(result);
   }
 
-  Future<String?> _queryNbnsName(InternetAddress ip,
-      {bool trackTiming = true}) async {
+  Future<String?> _queryNbnsName(
+    InternetAddress ip, {
+    bool trackTiming = true,
+  }) async {
     // NBNS lookups can fail on platforms without multicast/broadcast permission.
     RawDatagramSocket? socket;
     Timer? timer;
@@ -1029,7 +1087,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     for (final b in bytes) {
       final high = ((b >> 4) & 0x0F) + 0x41;
       final low = (b & 0x0F) + 0x41;
-      encoded..add(high)..add(low);
+      encoded
+        ..add(high)
+        ..add(low);
     }
     encoded.add(0x00); // terminator
     return encoded;
@@ -1067,7 +1127,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<List<T?>> _concurrentMap<T, S>(
-      Iterable<S> items, int parallel, Future<T> Function(S item) run) async {
+    Iterable<S> items,
+    int parallel,
+    Future<T> Function(S item) run,
+  ) async {
     final list = items.toList();
     final results = List<T?>.filled(list.length, null);
     var nextIndex = 0;
@@ -1086,29 +1149,25 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       }
     }
 
-    final workers = List.generate(
-      max(1, parallel),
-      (_) => pump(),
-    );
+    final workers = List.generate(max(1, parallel), (_) => pump());
     await Future.wait(workers);
     return results;
   }
 
   int _ipv4ToInt(InternetAddress address) {
     final octets = address.rawAddress;
-    return (octets[0] << 24) |
-        (octets[1] << 16) |
-        (octets[2] << 8) |
-        octets[3];
+    return (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
   }
 
   InternetAddress _intToIPv4(int value) {
-    return InternetAddress.fromRawAddress(Uint8List.fromList([
-      (value >> 24) & 0xFF,
-      (value >> 16) & 0xFF,
-      (value >> 8) & 0xFF,
-      value & 0xFF,
-    ]));
+    return InternetAddress.fromRawAddress(
+      Uint8List.fromList([
+        (value >> 24) & 0xFF,
+        (value >> 16) & 0xFF,
+        (value >> 8) & 0xFF,
+        value & 0xFF,
+      ]),
+    );
   }
 
   Future<T> _measure<T>(String label, Future<T> Function() run) async {
@@ -1121,15 +1180,20 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   Duration _nonHostnameTimeout(Duration base) {
     final ms = (base.inMilliseconds * _nonHostnameTimeoutFactor).round();
     return Duration(
-        milliseconds: ms.clamp(ScannerDefaults.nonHostnameTimeoutMinMs,
-            ScannerDefaults.nonHostnameTimeoutMaxMs));
+      milliseconds: ms.clamp(
+        ScannerDefaults.nonHostnameTimeoutMinMs,
+        ScannerDefaults.nonHostnameTimeoutMaxMs,
+      ),
+    );
   }
 
   Future<ProcessResult?> _runProcessWithTimeout(
-      String executable, List<String> arguments, Duration timeout) async {
+    String executable,
+    List<String> arguments,
+    Duration timeout,
+  ) async {
     try {
-      return await Process.run(executable, arguments)
-          .timeout(timeout);
+      return await Process.run(executable, arguments).timeout(timeout);
     } on TimeoutException {
       return null;
     } catch (_) {
@@ -1137,8 +1201,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     }
   }
 
-  Future<String?> _httpTitle(InternetAddress ip, bool includeFallbacks,
-      {bool trackTiming = true}) async {
+  Future<String?> _httpTitle(
+    InternetAddress ip,
+    bool includeFallbacks, {
+    bool trackTiming = true,
+  }) async {
     if (trackTiming) _spanStart(_httpTitleSpan);
     try {
       const schemes = ['http', 'https'];
@@ -1168,25 +1235,34 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<String?> _httpTitleForScheme(
-      InternetAddress ip, String scheme, String path) async {
+    InternetAddress ip,
+    String scheme,
+    String path,
+  ) async {
     final timeoutMs = (ScannerDefaults.httpTitleTimeoutBaseMs * timeoutFactor)
         .round()
-        .clamp(ScannerDefaults.httpTitleTimeoutMinMs,
-            ScannerDefaults.httpTitleTimeoutMaxMs);
+        .clamp(
+          ScannerDefaults.httpTitleTimeoutMinMs,
+          ScannerDefaults.httpTitleTimeoutMaxMs,
+        );
     final client = HttpClient()
       ..connectionTimeout = Duration(milliseconds: timeoutMs)
       ..badCertificateCallback = (cert, host, port) => true;
     try {
       final uri = Uri(scheme: scheme, host: ip.address, path: path);
-      final req = await client.getUrl(uri).timeout(Duration(milliseconds: timeoutMs));
+      final req = await client
+          .getUrl(uri)
+          .timeout(Duration(milliseconds: timeoutMs));
       // Allow a small number of redirects in case the device enforces HTTPS.
       req.followRedirects = true;
       req.maxRedirects = 2;
       req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
       final resp = await req.close().timeout(Duration(milliseconds: timeoutMs));
       final buffer = BytesBuilder();
-      await for (final chunk in resp.timeout(Duration(milliseconds: timeoutMs),
-          onTimeout: (sink) => sink.close())) {
+      await for (final chunk in resp.timeout(
+        Duration(milliseconds: timeoutMs),
+        onTimeout: (sink) => sink.close(),
+      )) {
         buffer.add(chunk);
         if (buffer.length > 12000) break;
       }
@@ -1203,8 +1279,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     return null;
   }
 
-  Future<Set<String>> _httpHints(InternetAddress ip,
-      {bool trackTiming = true}) async {
+  Future<Set<String>> _httpHints(
+    InternetAddress ip, {
+    bool trackTiming = true,
+  }) async {
     if (trackTiming) _spanStart(_httpHintsSpan);
     try {
       final names = <String>{};
@@ -1219,12 +1297,16 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<Set<String>> _httpHintsForScheme(
-      InternetAddress ip, String scheme) async {
+    InternetAddress ip,
+    String scheme,
+  ) async {
     final names = <String>{};
     final timeoutMs = (ScannerDefaults.httpHintsTimeoutBaseMs * timeoutFactor)
         .round()
-        .clamp(ScannerDefaults.httpHintsTimeoutMinMs,
-            ScannerDefaults.httpHintsTimeoutMaxMs);
+        .clamp(
+          ScannerDefaults.httpHintsTimeoutMinMs,
+          ScannerDefaults.httpHintsTimeoutMaxMs,
+        );
     final client = HttpClient()
       ..connectionTimeout = Duration(milliseconds: timeoutMs)
       ..badCertificateCallback = (cert, host, port) => true;
@@ -1236,7 +1318,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
             .openUrl('HEAD', uri)
             .timeout(Duration(milliseconds: timeoutMs));
       } catch (_) {
-        req = await client.getUrl(uri).timeout(Duration(milliseconds: timeoutMs));
+        req = await client
+            .getUrl(uri)
+            .timeout(Duration(milliseconds: timeoutMs));
       }
       req.followRedirects = false;
       req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
@@ -1251,8 +1335,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       }
       if (req.method != 'HEAD') {
         final buffer = BytesBuilder();
-        await for (final chunk in resp.timeout(Duration(milliseconds: timeoutMs),
-            onTimeout: (sink) => sink.close())) {
+        await for (final chunk in resp.timeout(
+          Duration(milliseconds: timeoutMs),
+          onTimeout: (sink) => sink.close(),
+        )) {
           buffer.add(chunk);
           if (buffer.length > 8000) break;
         }
@@ -1299,21 +1385,27 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final timeoutMs =
         (ScannerDefaults.httpHintsFromUrlTimeoutBaseMs * timeoutFactor)
             .round()
-            .clamp(ScannerDefaults.httpHintsFromUrlTimeoutMinMs,
-                ScannerDefaults.httpHintsFromUrlTimeoutMaxMs);
+            .clamp(
+              ScannerDefaults.httpHintsFromUrlTimeoutMinMs,
+              ScannerDefaults.httpHintsFromUrlTimeoutMaxMs,
+            );
     final client = HttpClient()
       ..connectionTimeout = Duration(milliseconds: timeoutMs)
       ..badCertificateCallback = (cert, host, port) => true;
     try {
-      final req = await client.getUrl(url).timeout(Duration(milliseconds: timeoutMs));
+      final req = await client
+          .getUrl(url)
+          .timeout(Duration(milliseconds: timeoutMs));
       req.followRedirects = true;
       req.maxRedirects = 2;
       req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
       final resp = await req.close().timeout(Duration(milliseconds: timeoutMs));
       names.addAll(_namesFromHeaders(resp.headers));
       final buffer = BytesBuilder();
-      await for (final chunk in resp.timeout(Duration(milliseconds: timeoutMs),
-          onTimeout: (sink) => sink.close())) {
+      await for (final chunk in resp.timeout(
+        Duration(milliseconds: timeoutMs),
+        onTimeout: (sink) => sink.close(),
+      )) {
         buffer.add(chunk);
         if (buffer.length > 8000) break;
       }
@@ -1330,15 +1422,16 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   String? _extractTitleLike(String body) {
-    final titleMatch = RegExp(r'<title[^>]*>([^<]{1,120})</title>',
-            caseSensitive: false)
-        .firstMatch(body);
+    final titleMatch = RegExp(
+      r'<title[^>]*>([^<]{1,120})</title>',
+      caseSensitive: false,
+    ).firstMatch(body);
     final title = titleMatch?.group(1)?.trim();
     if (title != null && title.isNotEmpty) return title;
     final jsTitleMatch = RegExp(
-            'document\\.title\\s*=\\s*[\\\'"]([^\\\'"]{1,120})[\\\'"]',
-            caseSensitive: false)
-        .firstMatch(body);
+      'document\\.title\\s*=\\s*[\\\'"]([^\\\'"]{1,120})[\\\'"]',
+      caseSensitive: false,
+    ).firstMatch(body);
     final jsTitle = jsTitleMatch?.group(1)?.trim();
     if (jsTitle != null && jsTitle.isNotEmpty) return jsTitle;
     return null;
@@ -1349,11 +1442,13 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     if (title != null && title.isNotEmpty) names.add(title);
     final metaPatterns = [
       RegExp(
-          '<meta[^>]+(?:name|property)=[\\\'"](application-name|apple-mobile-web-app-title|og:site_name)[\\\'"][^>]+content=[\\\'"]([^\\\'"]{1,120})[\\\'"]',
-          caseSensitive: false),
+        '<meta[^>]+(?:name|property)=[\\\'"](application-name|apple-mobile-web-app-title|og:site_name)[\\\'"][^>]+content=[\\\'"]([^\\\'"]{1,120})[\\\'"]',
+        caseSensitive: false,
+      ),
       RegExp(
-          '<meta[^>]+content=[\\\'"]([^\\\'"]{1,120})[\\\'"][^>]+(?:name|property)=[\\\'"](application-name|apple-mobile-web-app-title|og:site_name)[\\\'"]',
-          caseSensitive: false),
+        '<meta[^>]+content=[\\\'"]([^\\\'"]{1,120})[\\\'"][^>]+(?:name|property)=[\\\'"](application-name|apple-mobile-web-app-title|og:site_name)[\\\'"]',
+        caseSensitive: false,
+      ),
     ];
     for (final pattern in metaPatterns) {
       for (final match in pattern.allMatches(body)) {
@@ -1372,20 +1467,27 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         ip.address,
         22,
         timeout: Duration(
-            milliseconds:
-                (ScannerDefaults.sshBannerTimeoutBaseMs * timeoutFactor)
-                    .round()
-                    .clamp(ScannerDefaults.sshBannerTimeoutMinMs,
-                        ScannerDefaults.sshBannerTimeoutMaxMs)),
+          milliseconds: (ScannerDefaults.sshBannerTimeoutBaseMs * timeoutFactor)
+              .round()
+              .clamp(
+                ScannerDefaults.sshBannerTimeoutMinMs,
+                ScannerDefaults.sshBannerTimeoutMaxMs,
+              ),
+        ),
       );
       socket.write('\n');
-      final line = await _readLine(socket, 80,
-          Duration(
-              milliseconds:
-                  (ScannerDefaults.sshBannerTimeoutBaseMs * timeoutFactor)
-                      .round()
-                      .clamp(ScannerDefaults.sshBannerTimeoutMinMs,
-                          ScannerDefaults.sshBannerTimeoutMaxMs)));
+      final line = await _readLine(
+        socket,
+        80,
+        Duration(
+          milliseconds: (ScannerDefaults.sshBannerTimeoutBaseMs * timeoutFactor)
+              .round()
+              .clamp(
+                ScannerDefaults.sshBannerTimeoutMinMs,
+                ScannerDefaults.sshBannerTimeoutMaxMs,
+              ),
+        ),
+      );
       if (line == null) return null;
       return _extractHostnameFromBanner(line);
     } catch (_) {
@@ -1405,19 +1507,28 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         ip.address,
         23,
         timeout: Duration(
-            milliseconds:
-                (ScannerDefaults.telnetBannerTimeoutBaseMs * timeoutFactor)
-                    .round()
-                    .clamp(ScannerDefaults.telnetBannerTimeoutMinMs,
-                        ScannerDefaults.telnetBannerTimeoutMaxMs)),
+          milliseconds:
+              (ScannerDefaults.telnetBannerTimeoutBaseMs * timeoutFactor)
+                  .round()
+                  .clamp(
+                    ScannerDefaults.telnetBannerTimeoutMinMs,
+                    ScannerDefaults.telnetBannerTimeoutMaxMs,
+                  ),
+        ),
       );
-      final line = await _readLine(socket, 120,
-          Duration(
-              milliseconds:
-                  (ScannerDefaults.telnetBannerTimeoutBaseMs * timeoutFactor)
-                      .round()
-                      .clamp(ScannerDefaults.telnetBannerTimeoutMinMs,
-                          ScannerDefaults.telnetBannerTimeoutMaxMs)));
+      final line = await _readLine(
+        socket,
+        120,
+        Duration(
+          milliseconds:
+              (ScannerDefaults.telnetBannerTimeoutBaseMs * timeoutFactor)
+                  .round()
+                  .clamp(
+                    ScannerDefaults.telnetBannerTimeoutMinMs,
+                    ScannerDefaults.telnetBannerTimeoutMaxMs,
+                  ),
+        ),
+      );
       if (line == null) return null;
       return _extractHostnameFromBanner(line);
     } catch (_) {
@@ -1437,29 +1548,33 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       if (!completer.isCompleted) completer.complete(null);
     });
     late StreamSubscription<List<int>> sub;
-    sub = socket.listen((data) {
-      for (final b in data) {
-        if (b == 10 || b == 13) {
-          if (!completer.isCompleted) {
-            completer.complete(buffer.toString());
+    sub = socket.listen(
+      (data) {
+        for (final b in data) {
+          if (b == 10 || b == 13) {
+            if (!completer.isCompleted) {
+              completer.complete(buffer.toString());
+            }
+            timer?.cancel();
+            sub.cancel();
+            return;
           }
-          timer?.cancel();
-          sub.cancel();
-          return;
+          if (buffer.length < maxLen) {
+            buffer.writeCharCode(b);
+          }
         }
-        if (buffer.length < maxLen) {
-          buffer.writeCharCode(b);
-        }
-      }
-    }, onError: (_) {
-      if (!completer.isCompleted) completer.complete(null);
-      timer?.cancel();
-      sub.cancel();
-    }, onDone: () {
-      if (!completer.isCompleted) completer.complete(buffer.toString());
-      timer?.cancel();
-      sub.cancel();
-    });
+      },
+      onError: (_) {
+        if (!completer.isCompleted) completer.complete(null);
+        timer?.cancel();
+        sub.cancel();
+      },
+      onDone: () {
+        if (!completer.isCompleted) completer.complete(buffer.toString());
+        timer?.cancel();
+        sub.cancel();
+      },
+    );
     return completer.future;
   }
 
@@ -1467,10 +1582,18 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final cleaned = _cleanHostname(line);
     if (cleaned == null || cleaned.isEmpty) return null;
     final lower = cleaned.toLowerCase();
-    const generic = ['login', 'username', 'password', 'welcome', 'telnet', 'ssh'];
+    const generic = [
+      'login',
+      'username',
+      'password',
+      'welcome',
+      'telnet',
+      'ssh',
+    ];
     if (generic.any(lower.contains)) {
-      final match = RegExp(r'([a-z0-9][a-z0-9\\-]{1,63})(?:\\.[a-z0-9\\-\\.]{1,63})?')
-          .firstMatch(lower);
+      final match = RegExp(
+        r'([a-z0-9][a-z0-9\\-]{1,63})(?:\\.[a-z0-9\\-\\.]{1,63})?',
+      ).firstMatch(lower);
       if (match != null) {
         return match.group(0);
       }
@@ -1481,9 +1604,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
   Future<List<String>> _dnsSearchDomains() async {
     try {
-      return await _platform
-          .dnsSearchDomains(
-              const Duration(milliseconds: ScannerDefaults.dnsPlatformLookupTimeoutMs));
+      return await _platform.dnsSearchDomains(
+        const Duration(
+          milliseconds: ScannerDefaults.dnsPlatformLookupTimeoutMs,
+        ),
+      );
     } catch (_) {
       return const [];
     }
@@ -1491,18 +1616,21 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
   Future<List<InternetAddress>> _dnsNameServers() async {
     try {
-      return await _platform
-          .dnsNameServers(
-              const Duration(milliseconds: ScannerDefaults.dnsPlatformLookupTimeoutMs));
+      return await _platform.dnsNameServers(
+        const Duration(
+          milliseconds: ScannerDefaults.dnsPlatformLookupTimeoutMs,
+        ),
+      );
     } catch (_) {
       return const [];
     }
   }
 
   void _scheduleDnsSuffixRefresh(
-      List<DiscoveredHost> hosts,
-      HostUpdateCallback? onHost,
-      List<String> domains) {
+    List<DiscoveredHost> hosts,
+    HostUpdateCallback? onHost,
+    List<String> domains,
+  ) {
     if (domains.isEmpty) return;
     Future<void>(() async {
       for (var i = 0; i < hosts.length; i++) {
@@ -1512,14 +1640,17 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         for (final domain in domains) {
           final fqdn = '$base.$domain';
           try {
-            final addrs = await InternetAddress.lookup(fqdn)
-                .timeout(Duration(
-                    milliseconds:
-                        (ScannerDefaults.dnsSuffixLookupTimeoutBaseMs *
-                                timeoutFactor)
-                            .round()));
-            final match = addrs.any((addr) =>
-                addr.address == host.ipv4 || addr.address == host.ipv6);
+            final addrs = await InternetAddress.lookup(fqdn).timeout(
+              Duration(
+                milliseconds:
+                    (ScannerDefaults.dnsSuffixLookupTimeoutBaseMs *
+                            timeoutFactor)
+                        .round(),
+              ),
+            );
+            final match = addrs.any(
+              (addr) => addr.address == host.ipv4 || addr.address == host.ipv6,
+            );
             if (!match) continue;
             final otherNames = {...host.otherNames};
             otherNames.add(fqdn);
@@ -1536,17 +1667,13 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _scheduleDnsSrvRefresh(
-      List<DiscoveredHost> hosts,
-      HostUpdateCallback? onHost,
-      List<String> domains,
-      List<InternetAddress> servers) {
+    List<DiscoveredHost> hosts,
+    HostUpdateCallback? onHost,
+    List<String> domains,
+    List<InternetAddress> servers,
+  ) {
     if (domains.isEmpty || servers.isEmpty) return;
-    const services = [
-      '_http._tcp',
-      '_https._tcp',
-      '_ssh._tcp',
-      '_smb._tcp',
-    ];
+    const services = ['_http._tcp', '_https._tcp', '_ssh._tcp', '_smb._tcp'];
     Future<void>(() async {
       final indexByIp = {
         for (var i = 0; i < hosts.length; i++) hosts[i].ipv4: i,
@@ -1566,18 +1693,21 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         }
         return null;
       }
+
       for (final domain in domains) {
         for (final service in services) {
           final fqdn = '$service.$domain';
           final records = await _queryDnsSrv(fqdn, servers);
           for (final rec in records) {
             try {
-              final addrs = await InternetAddress.lookup(rec.target)
-                  .timeout(Duration(
-                      milliseconds:
-                          (ScannerDefaults.dnsSrvLookupTimeoutBaseMs *
-                                  timeoutFactor)
-                              .round()));
+              final addrs = await InternetAddress.lookup(rec.target).timeout(
+                Duration(
+                  milliseconds:
+                      (ScannerDefaults.dnsSrvLookupTimeoutBaseMs *
+                              timeoutFactor)
+                          .round(),
+                ),
+              );
               for (final addr in addrs) {
                 final idx = indexForIp(addr.address);
                 if (idx == null) continue;
@@ -1601,7 +1731,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<List<_SrvRecord>> _queryDnsSrv(
-      String name, List<InternetAddress> servers) async {
+    String name,
+    List<InternetAddress> servers,
+  ) async {
     for (final server in servers) {
       final records = await _queryDnsSrvOnce(name, server);
       if (records.isNotEmpty) return records;
@@ -1610,34 +1742,42 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<List<_SrvRecord>> _queryDnsSrvOnce(
-      String name, InternetAddress server) async {
+    String name,
+    InternetAddress server,
+  ) async {
     RawDatagramSocket? socket;
     try {
       socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       final query = _buildDnsQuery(name, 0x0021);
       socket.send(query, server, 53);
       final completer = Completer<List<_SrvRecord>>();
-      final timeoutMs = (ScannerDefaults.dnsSrvQueryTimeoutBaseMs * timeoutFactor)
-          .round()
-          .clamp(ScannerDefaults.dnsSrvQueryTimeoutMinMs,
-              ScannerDefaults.dnsSrvQueryTimeoutMaxMs);
+      final timeoutMs =
+          (ScannerDefaults.dnsSrvQueryTimeoutBaseMs * timeoutFactor)
+              .round()
+              .clamp(
+                ScannerDefaults.dnsSrvQueryTimeoutMinMs,
+                ScannerDefaults.dnsSrvQueryTimeoutMaxMs,
+              );
       final timer = Timer(Duration(milliseconds: timeoutMs), () {
         if (!completer.isCompleted) completer.complete(const []);
         socket?.close();
       });
-      socket.listen((event) {
-        if (event != RawSocketEvent.read) return;
-        final packet = socket?.receive();
-        if (packet == null) return;
-        final records = _parseDnsSrvResponse(packet.data);
-        if (!completer.isCompleted) completer.complete(records);
-        timer.cancel();
-        socket?.close();
-      }, onError: (_) {
-        if (!completer.isCompleted) completer.complete(const []);
-        timer.cancel();
-        socket?.close();
-      });
+      socket.listen(
+        (event) {
+          if (event != RawSocketEvent.read) return;
+          final packet = socket?.receive();
+          if (packet == null) return;
+          final records = _parseDnsSrvResponse(packet.data);
+          if (!completer.isCompleted) completer.complete(records);
+          timer.cancel();
+          socket?.close();
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete(const []);
+          timer.cancel();
+          socket?.close();
+        },
+      );
       return completer.future;
     } catch (_) {
       socket?.close();
@@ -1692,20 +1832,31 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         final weight = (data[offset + 2] << 8) | data[offset + 3];
         final port = (data[offset + 4] << 8) | data[offset + 5];
         final target = _readDnsName(data, offset + 6) ?? '';
-        records.add(_SrvRecord(
-            priority: priority, weight: weight, port: port, target: target));
+        records.add(
+          _SrvRecord(
+            priority: priority,
+            weight: weight,
+            port: port,
+            target: target,
+          ),
+        );
       }
       offset += rdLength;
     }
     return records;
   }
-  Future<String?> _tlsCommonName(InternetAddress ip,
-      {bool trackTiming = true}) async {
+
+  Future<String?> _tlsCommonName(
+    InternetAddress ip, {
+    bool trackTiming = true,
+  }) async {
     if (trackTiming) _spanStart(_tlsSpan);
     final timeoutMs = (ScannerDefaults.tlsTimeoutBaseMs * timeoutFactor)
         .round()
-        .clamp(ScannerDefaults.tlsTimeoutMinMs,
-            ScannerDefaults.tlsTimeoutMaxMs);
+        .clamp(
+          ScannerDefaults.tlsTimeoutMinMs,
+          ScannerDefaults.tlsTimeoutMaxMs,
+        );
     SecureSocket? socket;
     try {
       socket = await SecureSocket.connect(
@@ -1735,31 +1886,35 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     try {
       socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       final completer = Completer<void>();
-      final listenWindow =
-          Duration(
-              milliseconds:
-                  (ScannerDefaults.wsDiscoveryListenBaseMs * timeoutFactor)
-                      .round()
-                      .clamp(ScannerDefaults.wsDiscoveryListenMinMs,
-                          ScannerDefaults.wsDiscoveryListenMaxMs));
+      final listenWindow = Duration(
+        milliseconds: (ScannerDefaults.wsDiscoveryListenBaseMs * timeoutFactor)
+            .round()
+            .clamp(
+              ScannerDefaults.wsDiscoveryListenMinMs,
+              ScannerDefaults.wsDiscoveryListenMaxMs,
+            ),
+      );
       final timer = Timer(listenWindow, () {
         if (!completer.isCompleted) completer.complete();
         socket?.close();
       });
 
-      socket.listen((event) {
-        if (event != RawSocketEvent.read) return;
-        final packet = socket?.receive();
-        if (packet == null) return;
-        final payload = utf8.decode(packet.data, allowMalformed: true);
-        final name = _extractWsDiscoveryName(payload);
-        if (name == null || name.isEmpty) return;
-        map[packet.address.address] = name;
-      }, onError: (_) {
-        if (!completer.isCompleted) completer.complete();
-        timer.cancel();
-        socket?.close();
-      });
+      socket.listen(
+        (event) {
+          if (event != RawSocketEvent.read) return;
+          final packet = socket?.receive();
+          if (packet == null) return;
+          final payload = utf8.decode(packet.data, allowMalformed: true);
+          final name = _extractWsDiscoveryName(payload);
+          if (name == null || name.isEmpty) return;
+          map[packet.address.address] = name;
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete();
+          timer.cancel();
+          socket?.close();
+        },
+      );
 
       final messageId = _uuid();
       final probe = [
@@ -1777,11 +1932,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         '</e:Body>',
         '</e:Envelope>',
       ].join();
-      socket.send(
-        utf8.encode(probe),
-        InternetAddress('239.255.255.250'),
-        3702,
-      );
+      socket.send(utf8.encode(probe), InternetAddress('239.255.255.250'), 3702);
       await completer.future;
       timer.cancel();
       socket.close();
@@ -1793,9 +1944,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
   String? _extractWsDiscoveryName(String payload) {
     final xaddrsMatch = RegExp(
-            r'<(?:\\w+:)?XAddrs>([^<]+)</(?:\\w+:)?XAddrs>',
-            caseSensitive: false)
-        .firstMatch(payload);
+      r'<(?:\\w+:)?XAddrs>([^<]+)</(?:\\w+:)?XAddrs>',
+      caseSensitive: false,
+    ).firstMatch(payload);
     if (xaddrsMatch != null) {
       final xaddrs = xaddrsMatch.group(1) ?? '';
       for (final entry in xaddrs.split(RegExp(r'\\s+'))) {
@@ -1804,16 +1955,17 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         try {
           final uri = Uri.parse(url);
           final host = uri.host;
-          if (host.isNotEmpty && !RegExp(r'^\\d+\\.\\d+\\.\\d+\\.\\d+\$').hasMatch(host)) {
+          if (host.isNotEmpty &&
+              !RegExp(r'^\\d+\\.\\d+\\.\\d+\\.\\d+\$').hasMatch(host)) {
             return host;
           }
         } catch (_) {}
       }
     }
     final scopesMatch = RegExp(
-            r'<(?:\\w+:)?Scopes>([^<]+)</(?:\\w+:)?Scopes>',
-            caseSensitive: false)
-        .firstMatch(payload);
+      r'<(?:\\w+:)?Scopes>([^<]+)</(?:\\w+:)?Scopes>',
+      caseSensitive: false,
+    ).firstMatch(payload);
     if (scopesMatch != null) {
       final scopes = scopesMatch.group(1) ?? '';
       final tokens = scopes.split(RegExp(r'\\s+'));
@@ -1854,34 +2006,35 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       final completer = Completer<String?>();
       final timeoutMs = (ScannerDefaults.llmnrTimeoutBaseMs * timeoutFactor)
           .round()
-          .clamp(ScannerDefaults.llmnrTimeoutMinMs,
-              ScannerDefaults.llmnrTimeoutMaxMs);
+          .clamp(
+            ScannerDefaults.llmnrTimeoutMinMs,
+            ScannerDefaults.llmnrTimeoutMaxMs,
+          );
       final timer = Timer(Duration(milliseconds: timeoutMs), () {
         if (!completer.isCompleted) completer.complete(null);
         socket?.close();
       });
-      socket.listen((event) {
-        if (event != RawSocketEvent.read) return;
-        final packet = socket?.receive();
-        if (packet == null) return;
-        final name = _parseDnsPtrResponse(packet.data);
-        if (!completer.isCompleted) {
-          completer.complete(name);
+      socket.listen(
+        (event) {
+          if (event != RawSocketEvent.read) return;
+          final packet = socket?.receive();
+          if (packet == null) return;
+          final name = _parseDnsPtrResponse(packet.data);
+          if (!completer.isCompleted) {
+            completer.complete(name);
+            timer.cancel();
+            socket?.close();
+          }
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete(null);
           timer.cancel();
           socket?.close();
-        }
-      }, onError: (_) {
-        if (!completer.isCompleted) completer.complete(null);
-        timer.cancel();
-        socket?.close();
-      });
+        },
+      );
 
       final query = _buildDnsPtrQuery(ip);
-      socket.send(
-        query,
-        InternetAddress('224.0.0.252'),
-        5355,
-      );
+      socket.send(query, InternetAddress('224.0.0.252'), 5355);
       return completer.future;
     } catch (_) {
       socket?.close();
@@ -1954,11 +2107,13 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
           ip.address,
           port,
           timeout: Duration(
-              milliseconds:
-                  (ScannerDefaults.smbTimeoutBaseMs * timeoutFactor)
-                      .round()
-                      .clamp(ScannerDefaults.smbTimeoutMinMs,
-                          ScannerDefaults.smbTimeoutMaxMs)),
+            milliseconds: (ScannerDefaults.smbTimeoutBaseMs * timeoutFactor)
+                .round()
+                .clamp(
+                  ScannerDefaults.smbTimeoutMinMs,
+                  ScannerDefaults.smbTimeoutMaxMs,
+                ),
+          ),
         );
         reader = _SocketReader(socket);
         final negotiate = _wrapNetbios(_buildSmb2Negotiate(1));
@@ -1970,8 +2125,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
           continue;
         }
         final ntlmNegotiate = _buildSpnegoNegotiate(_buildNtlmNegotiate());
-        final sessionSetup =
-            _wrapNetbios(_buildSmb2SessionSetup(2, ntlmNegotiate));
+        final sessionSetup = _wrapNetbios(
+          _buildSmb2SessionSetup(2, ntlmNegotiate),
+        );
         socket.add(sessionSetup);
         await socket.flush();
         final sessionResp = await _readNetbios(reader);
@@ -2010,14 +2166,17 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<Uint8List?> _readNetbios(_SocketReader reader) async {
-    final header = await reader.read(4,
-        const Duration(milliseconds: ScannerDefaults.netbiosReadTimeoutMs));
+    final header = await reader.read(
+      4,
+      const Duration(milliseconds: ScannerDefaults.netbiosReadTimeoutMs),
+    );
     if (header == null || header.length < 4) return null;
     final length = (header[1] << 16) | (header[2] << 8) | header[3];
     if (length <= 0) return null;
     return reader.read(
-        length,
-        const Duration(milliseconds: ScannerDefaults.netbiosReadTimeoutMs));
+      length,
+      const Duration(milliseconds: ScannerDefaults.netbiosReadTimeoutMs),
+    );
   }
 
   Uint8List _buildSmb2Negotiate(int messageId) {
@@ -2079,12 +2238,16 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   Uint8List? _extractSmb2SecurityBlob(Uint8List response) {
     if (response.length < 72) return null;
     final offset = 64;
-    final securityOffset =
-        ByteData.sublistView(response, offset + 4, offset + 6)
-            .getUint16(0, Endian.little);
-    final securityLength =
-        ByteData.sublistView(response, offset + 6, offset + 8)
-            .getUint16(0, Endian.little);
+    final securityOffset = ByteData.sublistView(
+      response,
+      offset + 4,
+      offset + 6,
+    ).getUint16(0, Endian.little);
+    final securityLength = ByteData.sublistView(
+      response,
+      offset + 6,
+      offset + 8,
+    ).getUint16(0, Endian.little);
     if (securityOffset == 0 || securityLength == 0) return null;
     if (securityOffset + securityLength > response.length) return null;
     return response.sublist(securityOffset, securityOffset + securityLength);
@@ -2151,12 +2314,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final mechTypes = encodeSequence(ntlmOid);
     final mechTypesCtx = encodeContext(0xA0, mechTypes);
     final mechTokenCtx = encodeContext(0xA2, encodeOctetString(ntlm));
-    final negTokenInit =
-        encodeSequence([...mechTypesCtx, ...mechTokenCtx], tag: 0xA0);
-    final gss = encodeSequence(
-      [...spnegoOid, ...negTokenInit],
-      tag: 0x60,
-    );
+    final negTokenInit = encodeSequence([
+      ...mechTypesCtx,
+      ...mechTokenCtx,
+    ], tag: 0xA0);
+    final gss = encodeSequence([...spnegoOid, ...negTokenInit], tag: 0x60);
     return gss;
   }
 
@@ -2174,29 +2336,43 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       if (!match) continue;
       final base = i;
       if (base + 56 > blob.length) continue;
-      final msgType =
-          ByteData.sublistView(blob, base + 8, base + 12)
-              .getUint32(0, Endian.little);
+      final msgType = ByteData.sublistView(
+        blob,
+        base + 8,
+        base + 12,
+      ).getUint32(0, Endian.little);
       if (msgType != 2) continue;
-      final targetNameLen =
-          ByteData.sublistView(blob, base + 12, base + 14)
-              .getUint16(0, Endian.little);
-      final targetNameOffset =
-          ByteData.sublistView(blob, base + 16, base + 20)
-              .getUint32(0, Endian.little);
-      final flags =
-          ByteData.sublistView(blob, base + 20, base + 24)
-              .getUint32(0, Endian.little);
-      final targetInfoLen =
-          ByteData.sublistView(blob, base + 40, base + 42)
-              .getUint16(0, Endian.little);
-      final targetInfoOffset =
-          ByteData.sublistView(blob, base + 44, base + 48)
-              .getUint32(0, Endian.little);
+      final targetNameLen = ByteData.sublistView(
+        blob,
+        base + 12,
+        base + 14,
+      ).getUint16(0, Endian.little);
+      final targetNameOffset = ByteData.sublistView(
+        blob,
+        base + 16,
+        base + 20,
+      ).getUint32(0, Endian.little);
+      final flags = ByteData.sublistView(
+        blob,
+        base + 20,
+        base + 24,
+      ).getUint32(0, Endian.little);
+      final targetInfoLen = ByteData.sublistView(
+        blob,
+        base + 40,
+        base + 42,
+      ).getUint16(0, Endian.little);
+      final targetInfoOffset = ByteData.sublistView(
+        blob,
+        base + 44,
+        base + 48,
+      ).getUint32(0, Endian.little);
       if (targetNameLen > 0 &&
           targetNameOffset + targetNameLen <= blob.length) {
         final raw = blob.sublist(
-            targetNameOffset, targetNameOffset + targetNameLen);
+          targetNameOffset,
+          targetNameOffset + targetNameLen,
+        );
         names.add(_decodeNtlmString(raw, flags));
       }
       if (targetInfoLen > 0 &&
@@ -2204,12 +2380,16 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         final end = targetInfoOffset + targetInfoLen;
         var idx = targetInfoOffset;
         while (idx + 4 <= end) {
-          final avId =
-              ByteData.sublistView(blob, idx, idx + 2)
-                  .getUint16(0, Endian.little);
-          final avLen =
-              ByteData.sublistView(blob, idx + 2, idx + 4)
-                  .getUint16(0, Endian.little);
+          final avId = ByteData.sublistView(
+            blob,
+            idx,
+            idx + 2,
+          ).getUint16(0, Endian.little);
+          final avLen = ByteData.sublistView(
+            blob,
+            idx + 2,
+            idx + 4,
+          ).getUint16(0, Endian.little);
           idx += 4;
           if (avId == 0) break;
           if (idx + avLen > end) break;
@@ -2246,11 +2426,13 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         ip.address,
         port,
         timeout: Duration(
-            milliseconds:
-                (ScannerDefaults.smbTimeoutBaseMs * timeoutFactor)
-                    .round()
-                    .clamp(ScannerDefaults.smbTimeoutMinMs,
-                        ScannerDefaults.smbTimeoutMaxMs)),
+          milliseconds: (ScannerDefaults.smbTimeoutBaseMs * timeoutFactor)
+              .round()
+              .clamp(
+                ScannerDefaults.smbTimeoutMinMs,
+                ScannerDefaults.smbTimeoutMaxMs,
+              ),
+        ),
       );
       reader = _SocketReader(socket);
       final negotiate = _wrapNetbios(_buildSmb1Negotiate());
@@ -2262,8 +2444,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         return names;
       }
       final ntlmNegotiate = _buildSpnegoNegotiate(_buildNtlmNegotiate());
-      final sessionSetup =
-          _wrapNetbios(_buildSmb1SessionSetup(ntlmNegotiate));
+      final sessionSetup = _wrapNetbios(_buildSmb1SessionSetup(ntlmNegotiate));
       socket.add(sessionSetup);
       await socket.flush();
       final sessionResp = await _readNetbios(reader);
@@ -2293,7 +2474,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     header.setUint8(3, 0x42);
     header.setUint8(4, 0x72); // SMB_COM_NEGOTIATE
     header.setUint8(9, 0x18); // Flags
-    header.setUint16(10, 0x4801, Endian.little); // Flags2: long names + extended security
+    header.setUint16(
+      10,
+      0x4801,
+      Endian.little,
+    ); // Flags2: long names + extended security
     final payload = BytesBuilder();
     payload.add([0x00]); // WordCount
     final dialect = utf8.encode('NT LM 0.12');
@@ -2349,8 +2534,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       final securityOffset = paramsStart + 6;
       if (securityOffset + 2 <= response.length) {
         securityLength = ByteData.sublistView(
-                response, securityOffset, securityOffset + 2)
-            .getUint16(0, Endian.little);
+          response,
+          securityOffset,
+          securityOffset + 2,
+        ).getUint16(0, Endian.little);
       }
     }
     final dataStart = paramsStart + paramsLength + 2;
@@ -2408,8 +2595,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         timeout: max(1, effectiveTimeout.inSeconds),
       );
       await for (final event in ping.stream.timeout(
-          effectiveTimeout,
-          onTimeout: (sink) => sink.close())) {
+        effectiveTimeout,
+        onTimeout: (sink) => sink.close(),
+      )) {
         final response = event.response;
         if (response != null) {
           return response.time ?? effectiveTimeout;
@@ -2426,17 +2614,38 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   Future<Duration?> _tcpReachable(InternetAddress ip) async {
     _spanStart(_tcpSpan);
     try {
-      final ports = <int>[80, 443, 22, 53, 139, 445, 554, 8008, 8009, 8080, 8443, 9100, 9999];
+      final ports = <int>[
+        80,
+        443,
+        22,
+        53,
+        139,
+        445,
+        554,
+        8008,
+        8009,
+        8080,
+        8443,
+        9100,
+        9999,
+      ];
       final connectTimeout = Duration(
-          milliseconds: (ScannerDefaults.tcpReachableTimeoutBaseMs * timeoutFactor)
-              .round()
-              .clamp(ScannerDefaults.tcpReachableTimeoutMinMs,
-                  ScannerDefaults.tcpReachableTimeoutMaxMs));
+        milliseconds:
+            (ScannerDefaults.tcpReachableTimeoutBaseMs * timeoutFactor)
+                .round()
+                .clamp(
+                  ScannerDefaults.tcpReachableTimeoutMinMs,
+                  ScannerDefaults.tcpReachableTimeoutMaxMs,
+                ),
+      );
       for (final port in ports) {
         final timer = Stopwatch()..start();
         try {
-          final socket =
-              await Socket.connect(ip, port, timeout: connectTimeout);
+          final socket = await Socket.connect(
+            ip,
+            port,
+            timeout: connectTimeout,
+          );
           socket.destroy();
           return timer.elapsed;
         } catch (_) {}
@@ -2448,7 +2657,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   bool _shouldPingHost(InternetAddress ip, Set<int> arpPingIps) {
-    final isDesktop = Platform.isMacOS || Platform.isLinux || Platform.isWindows;
+    final isDesktop =
+        Platform.isMacOS || Platform.isLinux || Platform.isWindows;
     if (!isDesktop) return true;
     if (!enableArpCache) return true;
     if (arpPingIps.isEmpty) return true;
@@ -2463,17 +2673,17 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
           reverseDnsTimeoutMs ??
           (ScannerDefaults.reverseDnsTimeoutBaseMs * timeoutFactor)
               .round()
-              .clamp(ScannerDefaults.reverseDnsTimeoutMinMs,
-                  ScannerDefaults.reverseDnsTimeoutMaxMs);
+              .clamp(
+                ScannerDefaults.reverseDnsTimeoutMinMs,
+                ScannerDefaults.reverseDnsTimeoutMaxMs,
+              );
       final ptrName = _ipv4ToPtrName(ip);
       if (ptrName != null && _dnsServers.isNotEmpty) {
         final name = await _queryDnsPtr(ptrName, _dnsServers, timeoutMs);
         final cleaned = _cleanHostname(name);
         if (cleaned != null && cleaned.isNotEmpty) return cleaned;
       }
-      final dns = await ip
-          .reverse()
-          .timeout(Duration(milliseconds: timeoutMs));
+      final dns = await ip.reverse().timeout(Duration(milliseconds: timeoutMs));
       return _cleanHostname(dns.host);
     } catch (_) {
       return null;
@@ -2481,8 +2691,12 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       _spanEnd(_reverseDnsSpan);
     }
   }
+
   Future<String?> _queryDnsPtr(
-      String ptrName, List<InternetAddress> servers, int timeoutMs) async {
+    String ptrName,
+    List<InternetAddress> servers,
+    int timeoutMs,
+  ) async {
     for (final server in servers) {
       RawDatagramSocket? socket;
       try {
@@ -2494,21 +2708,24 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
           if (!completer.isCompleted) completer.complete(null);
           socket?.close();
         });
-        socket.listen((event) {
-          if (event != RawSocketEvent.read) return;
-          final packet = socket?.receive();
-          if (packet == null) return;
-          final name = _parseDnsPtrResponse(packet.data);
-          if (!completer.isCompleted) {
-            completer.complete(name);
+        socket.listen(
+          (event) {
+            if (event != RawSocketEvent.read) return;
+            final packet = socket?.receive();
+            if (packet == null) return;
+            final name = _parseDnsPtrResponse(packet.data);
+            if (!completer.isCompleted) {
+              completer.complete(name);
+              timer.cancel();
+              socket?.close();
+            }
+          },
+          onError: (_) {
+            if (!completer.isCompleted) completer.complete(null);
             timer.cancel();
             socket?.close();
-          }
-        }, onError: (_) {
-          if (!completer.isCompleted) completer.complete(null);
-          timer.cancel();
-          socket?.close();
-        });
+          },
+        );
         final result = await completer.future;
         if (result != null && result.isNotEmpty) return result;
       } catch (_) {
@@ -2608,7 +2825,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _logScanSummary(
-      List<DiscoveredHost> hosts, ProgressCallback? onProgress) {
+    List<DiscoveredHost> hosts,
+    ProgressCallback? onProgress,
+  ) {
     if (!debugTiming) return;
     final sourceCounts = <String, int>{};
     var withName = 0;
@@ -2645,11 +2864,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       }
     }
     final sourcePairs = sourceCounts.keys.toList()..sort();
-    final bySource = sourcePairs
-        .map((k) => '$k=${sourceCounts[k]}')
-        .join(', ');
+    final bySource = sourcePairs.map((k) => '$k=${sourceCounts[k]}').join(', ');
     _debug(
-        'scan summary: hosts=${hosts.length} name=$withName otherNames=$withOtherNames ipv6=$withIpv6 mac=$withMac vendor=$withVendor latency=$withLatency dnsLike=$withDnsLike');
+      'scan summary: hosts=${hosts.length} name=$withName otherNames=$withOtherNames ipv6=$withIpv6 mac=$withMac vendor=$withVendor latency=$withLatency dnsLike=$withDnsLike',
+    );
     _debug('scan summary sources: $bySource');
     onProgress?.call('Scan summary logged');
   }
@@ -2662,7 +2880,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     for (final version in const [1, 0]) {
       final sysName = await _snmpGetStringWithVersion(ip, version, sysNameOid);
       if (sysName != null && sysName.isNotEmpty) names.add(sysName);
-      final sysDescr = await _snmpGetStringWithVersion(ip, version, sysDescrOid);
+      final sysDescr = await _snmpGetStringWithVersion(
+        ip,
+        version,
+        sysDescrOid,
+      );
       if (sysDescr != null && sysDescr.isNotEmpty) names.add(sysDescr);
       if (names.isNotEmpty) break;
     }
@@ -2670,13 +2892,18 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<String?> _snmpGetStringWithVersion(
-      InternetAddress ip, int version, List<int> oidParts) async {
+    InternetAddress ip,
+    int version,
+    List<int> oidParts,
+  ) async {
     final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     final completer = Completer<String?>();
     final timeoutMs = (ScannerDefaults.snmpTimeoutBaseMs * timeoutFactor)
         .round()
-        .clamp(ScannerDefaults.snmpTimeoutMinMs,
-            ScannerDefaults.snmpTimeoutMaxMs);
+        .clamp(
+          ScannerDefaults.snmpTimeoutMinMs,
+          ScannerDefaults.snmpTimeoutMaxMs,
+        );
     final timer = Timer(Duration(milliseconds: timeoutMs), () {
       if (!completer.isCompleted) completer.complete(null);
       socket.close();
@@ -2684,25 +2911,31 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final reqId = Random().nextInt(0x7FFFFFFF);
     final packet = _buildSnmpGetRequest(reqId, version, oidParts);
     socket.send(packet, ip, 161);
-    socket.listen((event) {
-      if (event == RawSocketEvent.read) {
-        final datagram = socket.receive();
-        if (datagram == null) return;
-        final parsed = _parseSnmpStringForOid(datagram.data, oidParts);
-        if (!completer.isCompleted) completer.complete(parsed);
+    socket.listen(
+      (event) {
+        if (event == RawSocketEvent.read) {
+          final datagram = socket.receive();
+          if (datagram == null) return;
+          final parsed = _parseSnmpStringForOid(datagram.data, oidParts);
+          if (!completer.isCompleted) completer.complete(parsed);
+          timer.cancel();
+          socket.close();
+        }
+      },
+      onError: (_) {
+        if (!completer.isCompleted) completer.complete(null);
         timer.cancel();
         socket.close();
-      }
-    }, onError: (_) {
-      if (!completer.isCompleted) completer.complete(null);
-      timer.cancel();
-      socket.close();
-    });
+      },
+    );
     return completer.future;
   }
 
   List<int> _buildSnmpGetRequest(
-      int requestId, int version, List<int> oidParts) {
+    int requestId,
+    int version,
+    List<int> oidParts,
+  ) {
     Uint8List encodeLength(int len) {
       if (len < 128) return Uint8List.fromList([len]);
       final bytes = <int>[];
@@ -2763,10 +2996,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final requestIdEnc = encodeInteger(requestId);
     final errorStatus = encodeInteger(0);
     final errorIndex = encodeInteger(0);
-    final varBind = encodeSequence([
-      ...oid,
-      ...encodeNull(),
-    ]);
+    final varBind = encodeSequence([...oid, ...encodeNull()]);
     final varBindList = encodeSequence(varBind);
     final pdu = encodeSequence([
       ...requestIdEnc,
@@ -2843,9 +3073,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _scheduleMacRefresh(
-      List<DiscoveredHost> hosts,
-      List<InterfaceInfo> interfaces,
-      HostUpdateCallback? onHost) {
+    List<DiscoveredHost> hosts,
+    List<InterfaceInfo> interfaces,
+    HostUpdateCallback? onHost,
+  ) {
     if (!enableArpCache) return;
     Future<void>(() async {
       final refreshedCache = await _readArpCache();
@@ -2853,16 +3084,17 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       for (var i = 0; i < hosts.length; i++) {
         final host = hosts[i];
         final currentMac = host.macAddress;
-        final refreshedMac = currentMac ??
+        final refreshedMac =
+            currentMac ??
             refreshedCache[host.ipv4] ??
             await _resolveMacAddress(InternetAddress(host.ipv4));
         if (refreshedMac != null && refreshedMac != currentMac) {
           final vendor = await _ouiLookup.vendorForMac(refreshedMac);
-      final updated = host.copyWith(
-        macAddress: refreshedMac,
-        vendor: vendor ?? host.vendor,
-        sources: {...host.sources, 'ARP'},
-      );
+          final updated = host.copyWith(
+            macAddress: refreshedMac,
+            vendor: vendor ?? host.vendor,
+            sources: {...host.sources, 'ARP'},
+          );
           hosts[i] = updated;
           onHost?.call(updated);
         }
@@ -2875,8 +3107,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     if (ip.type != InternetAddressType.IPv4) return false;
     final prefix = iface.prefixLength;
     if (prefix <= 0) return false;
-    final mask =
-        prefix == 32 ? 0xFFFFFFFF : (~((1 << (32 - prefix)) - 1) & 0xFFFFFFFF);
+    final mask = prefix == 32
+        ? 0xFFFFFFFF
+        : (~((1 << (32 - prefix)) - 1) & 0xFFFFFFFF);
     final ipInt = _ipv4ToInt(ip);
     final ifaceInt = _ipv4ToInt(iface.address);
     return (ipInt & mask) == (ifaceInt & mask);
@@ -2924,30 +3157,33 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _scheduleHostnameRefresh(
-      List<DiscoveredHost> hosts, HostUpdateCallback? onHost) {
+    List<DiscoveredHost> hosts,
+    HostUpdateCallback? onHost,
+  ) {
     if (!enableReverseDns && !enableNbns) return;
     Future<void>(() async {
       for (var i = 0; i < hosts.length; i++) {
         final host = hosts[i];
         String? hostname = host.hostname;
-        final otherNames =
-            includeAdvancedHostnames ? {...host.otherNames} : <String>{};
+        final otherNames = includeAdvancedHostnames
+            ? {...host.otherNames}
+            : <String>{};
         final sources = {...host.sources};
 
         if (enableReverseDns) {
           try {
-            final dns = await InternetAddress(host.ipv4)
-                .reverse()
-                .timeout(Duration(
-                    milliseconds:
-                        (ScannerDefaults.hostnameRefreshReverseDnsTimeoutBaseMs *
-                                timeoutFactor)
-                            .round()
-                            .clamp(
-                                ScannerDefaults
-                                    .hostnameRefreshReverseDnsTimeoutMinMs,
-                                ScannerDefaults
-                                    .hostnameRefreshReverseDnsTimeoutMaxMs)));
+            final dns = await InternetAddress(host.ipv4).reverse().timeout(
+              Duration(
+                milliseconds:
+                    (ScannerDefaults.hostnameRefreshReverseDnsTimeoutBaseMs *
+                            timeoutFactor)
+                        .round()
+                        .clamp(
+                          ScannerDefaults.hostnameRefreshReverseDnsTimeoutMinMs,
+                          ScannerDefaults.hostnameRefreshReverseDnsTimeoutMaxMs,
+                        ),
+              ),
+            );
             final name = _cleanHostname(dns.host);
             if (name != null && name.isNotEmpty) {
               if (hostname == null || hostname.isEmpty) {
@@ -2962,8 +3198,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
         if (enableNbns) {
           try {
-            final nbns = await _queryNbnsName(InternetAddress(host.ipv4),
-                trackTiming: false);
+            final nbns = await _queryNbnsName(
+              InternetAddress(host.ipv4),
+              trackTiming: false,
+            );
             if (nbns != null) {
               final name = _cleanHostname(nbns);
               if (name != null && name.isNotEmpty) {
@@ -2997,7 +3235,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _scheduleLlmnrRefresh(
-      List<DiscoveredHost> hosts, HostUpdateCallback? onHost) {
+    List<DiscoveredHost> hosts,
+    HostUpdateCallback? onHost,
+  ) {
     if (!enableLlmnr) return;
     Future<void>(() async {
       final targets = hosts
@@ -3026,6 +3266,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         }
         return null;
       }
+
       for (var i = 0; i < targets.length; i++) {
         final name = _cleanHostname(results[i]);
         if (name == null || name.isEmpty) continue;
@@ -3057,7 +3298,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _scheduleMdnsReverseRefresh(
-      List<DiscoveredHost> hosts, HostUpdateCallback? onHost) {
+    List<DiscoveredHost> hosts,
+    HostUpdateCallback? onHost,
+  ) {
     if (!enableMdnsReverse) return;
     Future<void>(() async {
       final targets = hosts
@@ -3090,6 +3333,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
           }
           return null;
         }
+
         for (var i = 0; i < targets.length; i++) {
           final name = _cleanHostname(results[i]);
           if (name == null || name.isEmpty) continue;
@@ -3128,7 +3372,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _scheduleHttpRefresh(
-      List<DiscoveredHost> hosts, HostUpdateCallback? onHost) {
+    List<DiscoveredHost> hosts,
+    HostUpdateCallback? onHost,
+  ) {
     if (!enableHttpScan || !deferHttpScan) return;
     Future<void>(() async {
       if (hosts.isEmpty) return;
@@ -3189,8 +3435,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
           }
           if (includeAdvancedHostnames) {
             try {
-              final hints = await _httpHints(InternetAddress(host.ipv4),
-                  trackTiming: false);
+              final hints = await _httpHints(
+                InternetAddress(host.ipv4),
+                trackTiming: false,
+              );
               for (final hint in hints) {
                 recordHttpName(hint, 'HTTP-HINT');
               }
@@ -3218,16 +3466,16 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     });
   }
 
-  void _mergeMdns(List<DiscoveredHost> hosts, Map<String, _MdnsInfo> mdnsMap,
-      HostUpdateCallback? onHost) {
-    final indexByIp = {
-      for (var i = 0; i < hosts.length; i++) hosts[i].ipv4: i,
-    };
+  void _mergeMdns(
+    List<DiscoveredHost> hosts,
+    Map<String, _MdnsInfo> mdnsMap,
+    HostUpdateCallback? onHost,
+  ) {
+    final indexByIp = {for (var i = 0; i < hosts.length; i++) hosts[i].ipv4: i};
     mdnsMap.forEach((ip, info) {
       final cleanName = _cleanHostname(info.name);
       final existingIndex = indexByIp[ip];
-      final existing =
-          existingIndex != null ? hosts[existingIndex] : null;
+      final existing = existingIndex != null ? hosts[existingIndex] : null;
       final otherNames = {...(existing?.otherNames ?? const <String>{})};
       String? hostname = cleanName;
       if (existing != null && (existing.hostname ?? '').isNotEmpty) {
@@ -3259,10 +3507,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         otherNames: otherNames,
         macAddress: existing?.macAddress,
         vendor: existing?.vendor,
-        sources: {
-          ...(existing?.sources ?? {}),
-          'mDNS',
-        },
+        sources: {...(existing?.sources ?? {}), 'mDNS'},
         responseTime: existing?.responseTime,
       );
       if (existing == null) {
@@ -3275,18 +3520,19 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     });
   }
 
-  void _mergeNamedMap(List<DiscoveredHost> hosts, Map<String, String> names,
-      String source, HostUpdateCallback? onHost) {
+  void _mergeNamedMap(
+    List<DiscoveredHost> hosts,
+    Map<String, String> names,
+    String source,
+    HostUpdateCallback? onHost,
+  ) {
     if (names.isEmpty) return;
-    final indexByIp = {
-      for (var i = 0; i < hosts.length; i++) hosts[i].ipv4: i,
-    };
+    final indexByIp = {for (var i = 0; i < hosts.length; i++) hosts[i].ipv4: i};
     names.forEach((ip, name) {
       final clean = _cleanHostname(name);
       if (clean == null || clean.isEmpty) return;
       final existingIndex = indexByIp[ip];
-      final existing =
-          existingIndex != null ? hosts[existingIndex] : null;
+      final existing = existingIndex != null ? hosts[existingIndex] : null;
       if (existing == null) {
         final added = DiscoveredHost(
           ipv4: ip,
@@ -3329,18 +3575,16 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _mergeNamedSetMap(
-      List<DiscoveredHost> hosts,
-      Map<String, Set<String>> names,
-      String source,
-      HostUpdateCallback? onHost) {
+    List<DiscoveredHost> hosts,
+    Map<String, Set<String>> names,
+    String source,
+    HostUpdateCallback? onHost,
+  ) {
     if (names.isEmpty) return;
-    final indexByIp = {
-      for (var i = 0; i < hosts.length; i++) hosts[i].ipv4: i,
-    };
+    final indexByIp = {for (var i = 0; i < hosts.length; i++) hosts[i].ipv4: i};
     names.forEach((ip, nameSet) {
       final existingIndex = indexByIp[ip];
-      final existing =
-          existingIndex != null ? hosts[existingIndex] : null;
+      final existing = existingIndex != null ? hosts[existingIndex] : null;
       if (existing == null) {
         final cleaned = nameSet
             .map(_cleanHostname)
@@ -3386,11 +3630,14 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   void _scheduleIpv6Ping(
-      List<DiscoveredHost> hosts, HostUpdateCallback? onHost) {
+    List<DiscoveredHost> hosts,
+    HostUpdateCallback? onHost,
+  ) {
     if (!enableIpv6Ping) return;
     Future<void>(() async {
-      final ipv6Targets =
-          hosts.where((h) => (h.ipv6 ?? '').isNotEmpty).toList();
+      final ipv6Targets = hosts
+          .where((h) => (h.ipv6 ?? '').isNotEmpty)
+          .toList();
       _debug('scheduling IPv6 pings for ${ipv6Targets.length} hosts');
       final effectiveTimeout = _nonHostnameTimeout(pingTimeout);
       for (var i = 0; i < hosts.length; i++) {
@@ -3404,8 +3651,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
             timeout: max(1, effectiveTimeout.inSeconds),
           );
           await for (final event in ping.stream.timeout(
-              effectiveTimeout,
-              onTimeout: (sink) => sink.close())) {
+            effectiveTimeout,
+            onTimeout: (sink) => sink.close(),
+          )) {
             if (event.response != null) {
               final latency = event.response?.time;
               final updated = host.copyWith(
@@ -3491,8 +3739,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     }
   }
 
-  Future<void> _mergeNdp(List<DiscoveredHost> hosts, List<NdpEntry> ndp,
-      HostUpdateCallback? onHost) async {
+  Future<void> _mergeNdp(
+    List<DiscoveredHost> hosts,
+    List<NdpEntry> ndp,
+    HostUpdateCallback? onHost,
+  ) async {
     if (ndp.isEmpty) return;
     _debug('merging ${ndp.length} NDP entries into ${hosts.length} hosts');
     final byMac = <String, List<NdpEntry>>{};
@@ -3509,8 +3760,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       final matches = byMac[mac];
       if (matches == null || matches.isEmpty) continue;
       final firstMatch = matches.firstWhere(
-          (m) => m.ipv6.isNotEmpty,
-          orElse: () => matches.first);
+        (m) => m.ipv6.isNotEmpty,
+        orElse: () => matches.first,
+      );
       final ipv6 = firstMatch.ipv6;
       unmatched.remove(firstMatch);
       if (ipv6.isEmpty) continue;
@@ -3555,8 +3807,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
           var result = await _runProcessWithTimeout(
             'ping6',
             ['-c', '1', '-t', '2', '-I', iface.name, 'ff02::1'],
-            _nonHostnameTimeout(const Duration(
-                milliseconds: ScannerDefaults.nonHostnameTimeoutProcessMs)),
+            _nonHostnameTimeout(
+              const Duration(
+                milliseconds: ScannerDefaults.nonHostnameTimeoutProcessMs,
+              ),
+            ),
           );
           _debug('ping6 ff02::1 on ${iface.name} exit=${result?.exitCode}');
           // Linux often aliases to `ping -6`; fallback if ping6 missing.
@@ -3564,8 +3819,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
             await _runProcessWithTimeout(
               'ping',
               ['-6', '-c', '1', '-I', iface.name, 'ff02::1'],
-              _nonHostnameTimeout(const Duration(
-                  milliseconds: ScannerDefaults.nonHostnameTimeoutProcessMs)),
+              _nonHostnameTimeout(
+                const Duration(
+                  milliseconds: ScannerDefaults.nonHostnameTimeoutProcessMs,
+                ),
+              ),
             );
             _debug('fallback ping -6 ff02::1 on ${iface.name}');
           }
@@ -3579,7 +3837,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   }
 
   Future<List<NdpEntry>> _collectNdpEntries(
-      List<InterfaceInfo> interfaces) async {
+    List<InterfaceInfo> interfaces,
+  ) async {
     if (interfaces.isEmpty) {
       _debug('no interfaces available for NDP; skipping IPv6 merge');
       return const <NdpEntry>[];
@@ -3594,7 +3853,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final readTimer = Stopwatch()..start();
     var ndp = await _readNdpCache();
     _debug(
-        'first NDP read took ${readTimer.elapsedMilliseconds} ms, yielded ${ndp.length} entries');
+      'first NDP read took ${readTimer.elapsedMilliseconds} ms, yielded ${ndp.length} entries',
+    );
 
     // Retry if empty: warm again and re-read.
     if (ndp.isEmpty) {
@@ -3607,7 +3867,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       final retryReadTimer = Stopwatch()..start();
       ndp = await _readNdpCache();
       _debug(
-          'second NDP read took ${retryReadTimer.elapsedMilliseconds} ms, yielded ${ndp.length} entries');
+        'second NDP read took ${retryReadTimer.elapsedMilliseconds} ms, yielded ${ndp.length} entries',
+      );
     }
 
     if (ndp.isEmpty) {
@@ -3653,7 +3914,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     List<String>? bytes;
 
     if (hasDelimiters) {
-      final parts = raw.split(RegExp(r'[^A-Fa-f0-9]+')).where((p) => p.isNotEmpty).toList();
+      final parts = raw
+          .split(RegExp(r'[^A-Fa-f0-9]+'))
+          .where((p) => p.isNotEmpty)
+          .toList();
       final extracted = <String>[];
       for (final part in parts) {
         var chunk = part.replaceAll(RegExp(r'[^A-Fa-f0-9]'), '');
@@ -3668,7 +3932,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         }
       }
       if (extracted.length >= 6) {
-        bytes = extracted.take(6).map((b) => b.padLeft(2, '0').substring(b.length - 2)).toList();
+        bytes = extracted
+            .take(6)
+            .map((b) => b.padLeft(2, '0').substring(b.length - 2))
+            .toList();
       }
     }
 
@@ -3691,7 +3958,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 }
 
 class _MdnsInfo {
-  const _MdnsInfo({required this.name, this.ipv6, this.aliases = const <String>{}});
+  const _MdnsInfo({
+    required this.name,
+    this.ipv6,
+    this.aliases = const <String>{},
+  });
 
   final String name;
   final String? ipv6;
