@@ -3,12 +3,22 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:dart_ping/dart_ping.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'src/models.dart';
 import 'src/scanner.dart';
 import 'src/scanner_constants.dart';
+
+const bool _scanDebugTimingOverride = bool.fromEnvironment(
+  'SCAN_DEBUG_TIMING',
+  defaultValue: false,
+);
+const bool _scanInitialFull = bool.fromEnvironment(
+  'SCAN_INITIAL_FULL',
+  defaultValue: false,
+);
 
 bool _isOnlineHost(DiscoveredHost host) {
   if (host.responseTime != null) return true;
@@ -21,12 +31,14 @@ void main() {
 }
 
 class MultiScanApp extends StatelessWidget {
-  const MultiScanApp({super.key});
+  const MultiScanApp({super.key, this.autoStartScan = true});
+
+  final bool autoStartScan;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'LAN MultiScan',
+      title: 'MultiScan',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -35,13 +47,15 @@ class MultiScanApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const ScanPage(),
+      home: ScanPage(autoStartScan: autoStartScan),
     );
   }
 }
 
 class ScanPage extends StatefulWidget {
-  const ScanPage({super.key});
+  const ScanPage({super.key, this.autoStartScan = true});
+
+  final bool autoStartScan;
 
   @override
   State<ScanPage> createState() => _ScanPageState();
@@ -53,14 +67,16 @@ class _ScanPageState extends State<ScanPage> {
       : ScannerDefaults.uiTimeoutBumpDefault;
   final Duration _basePing = ScannerDefaults.uiBasePing;
   final Duration _baseMdns = ScannerDefaults.uiBaseMdns;
-  static const Duration _hostFlushInterval = ScannerDefaults.uiHostFlushInterval;
+  static const Duration _hostFlushInterval =
+      ScannerDefaults.uiHostFlushInterval;
   bool _scanning = false;
-  String _status = 'Idle';
+  String _status = 'Loading interfaces...';
   SortColumn _sortColumn = SortColumn.ipv4;
   bool _sortAscending = true;
   final _hosts = <DiscoveredHost>[];
   final _pendingHostUpdates = <DiscoveredHost>[];
   Timer? _hostFlushTimer;
+  bool _initialScanStarted = false;
   bool _autoPing = false;
   bool _autoPingRunning = false;
   bool _showOffline = false;
@@ -72,7 +88,11 @@ class _ScanPageState extends State<ScanPage> {
   @override
   void initState() {
     super.initState();
-    _initInterfaces();
+    if (widget.autoStartScan) {
+      _initInterfaces();
+    } else {
+      _status = 'Idle';
+    }
   }
 
   @override
@@ -83,17 +103,25 @@ class _ScanPageState extends State<ScanPage> {
     super.dispose();
   }
 
-  Future<void> _startScan({bool doubleTimeouts = false}) async {
+  Future<void> _startScan({
+    bool doubleTimeouts = false,
+    bool fastStart = false,
+  }) async {
     setState(() {
       _scanning = true;
-      _status = 'Preparing scan...';
+      _status = fastStart
+          ? 'Preparing quick scan...'
+          : 'Preparing full scan...';
       _hosts.clear();
       _pendingHostUpdates.clear();
       _hostFlushTimer?.cancel();
       _hostFlushTimer = null;
     });
     try {
-      final scanner = _createScanner(doubleTimeouts: doubleTimeouts);
+      final scanner = _createScanner(
+        doubleTimeouts: doubleTimeouts,
+        fastStart: fastStart,
+      );
       final result = await scanner.scan(
         onProgress: (msg) {
           setState(() => _status = msg);
@@ -120,10 +148,23 @@ class _ScanPageState extends State<ScanPage> {
     if (!mounted) return;
     setState(() {
       _interfaces = interfaces;
-      _selectedInterfaceName =
-          interfaces.isNotEmpty ? interfaces.first.name : null;
+      _selectedInterfaceName = interfaces.isNotEmpty
+          ? interfaces.first.name
+          : null;
+      _status = interfaces.isEmpty
+          ? 'No network interface found'
+          : 'Ready. Starting quick scan...';
     });
-    _startScan();
+    _scheduleInitialQuickScan();
+  }
+
+  void _scheduleInitialQuickScan() {
+    if (_initialScanStarted || _interfaces.isEmpty) return;
+    _initialScanStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _scanning) return;
+      unawaited(_startScan(fastStart: !_scanInitialFull));
+    });
   }
 
   Future<List<_InterfaceChoice>> _loadInterfaces() async {
@@ -154,30 +195,34 @@ class _ScanPageState extends State<ScanPage> {
         byName.putIfAbsent(iface.name, () => addr.address);
       }
     }
-    final choices = byName.entries
-        .map((entry) => _InterfaceChoice(entry.key, entry.value))
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final choices =
+        byName.entries
+            .map((entry) => _InterfaceChoice(entry.key, entry.value))
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
     return choices;
   }
 
   Widget _buildInterfaceDropdown({required bool isCompact}) {
     final hasInterfaces = _interfaces.isNotEmpty;
     final items = _interfaces
-        .map((iface) => DropdownMenuItem<String>(
-              value: iface.name,
-              child: Text(
-                iface.address.isEmpty
-                    ? iface.name
-                    : '${iface.name} (${iface.address})',
-                overflow: TextOverflow.ellipsis,
-              ),
-            ))
+        .map(
+          (iface) => DropdownMenuItem<String>(
+            value: iface.name,
+            child: Text(
+              iface.address.isEmpty
+                  ? iface.name
+                  : '${iface.name} (${iface.address})',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        )
         .toList();
     return SizedBox(
       width: isCompact ? double.infinity : 220,
       height: 32,
       child: DropdownButtonFormField<String>(
+        isExpanded: true,
         initialValue: hasInterfaces ? _selectedInterfaceName : null,
         items: items,
         hint: const Text('No interfaces'),
@@ -186,7 +231,7 @@ class _ScanPageState extends State<ScanPage> {
             ? (value) {
                 if (value == null || value == _selectedInterfaceName) return;
                 setState(() => _selectedInterfaceName = value);
-                if (!_scanning) _startScan();
+                if (!_scanning) _startScan(fastStart: true);
               }
             : null,
         decoration: const InputDecoration(
@@ -203,8 +248,10 @@ class _ScanPageState extends State<ScanPage> {
   Widget build(BuildContext context) {
     final isCompact = MediaQuery.of(context).size.shortestSide < 600;
     final isMobile = Platform.isAndroid || Platform.isIOS;
-    final availableSearchWidth =
-        math.max(0.0, MediaQuery.of(context).size.width - 24);
+    final availableSearchWidth = math.max(
+      0.0,
+      MediaQuery.of(context).size.width - 24,
+    );
     final searchWidth = isCompact
         ? math.min(availableSearchWidth, 320.0)
         : 260.0;
@@ -240,8 +287,10 @@ class _ScanPageState extends State<ScanPage> {
                               prefixIcon: Icon(Icons.search, size: 18),
                               hintText: 'Search hosts',
                               border: OutlineInputBorder(),
-                              contentPadding:
-                                  EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
                             ),
                           ),
                         ),
@@ -260,7 +309,8 @@ class _ScanPageState extends State<ScanPage> {
                           PopupMenuItem(
                             value: 'show_offline',
                             child: Text(
-                                'Show offline devices (${_showOffline ? "on" : "off"})'),
+                              'Show offline devices (${_showOffline ? "on" : "off"})',
+                            ),
                           ),
                         ],
                         icon: const Icon(Icons.menu),
@@ -315,8 +365,10 @@ class _ScanPageState extends State<ScanPage> {
                             prefixIcon: Icon(Icons.search, size: 18),
                             hintText: 'Search hosts',
                             border: OutlineInputBorder(),
-                            contentPadding:
-                                EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
                           ),
                         ),
                       ),
@@ -426,9 +478,13 @@ class _ScanPageState extends State<ScanPage> {
     });
   }
 
-  void _upsertHostInternal(DiscoveredHost host,
-      {bool sort = true, bool updateStatus = true}) {
-    final hasUsefulData = host.responseTime != null ||
+  void _upsertHostInternal(
+    DiscoveredHost host, {
+    bool sort = true,
+    bool updateStatus = true,
+  }) {
+    final hasUsefulData =
+        host.responseTime != null ||
         host.sources.contains('ICMP') ||
         host.sources.contains('ICMPv6') ||
         host.macAddress != null ||
@@ -445,8 +501,8 @@ class _ScanPageState extends State<ScanPage> {
     final matchingMacIdxs = mac.isEmpty
         ? <int>[]
         : List<int>.generate(_hosts.length, (i) => i)
-            .where((i) => (_hosts[i].macAddress ?? '').toLowerCase() == mac)
-            .toList();
+              .where((i) => (_hosts[i].macAddress ?? '').toLowerCase() == mac)
+              .toList();
 
     if (idxByIp == -1 && matchingMacIdxs.isEmpty) {
       _hosts.add(host);
@@ -454,14 +510,18 @@ class _ScanPageState extends State<ScanPage> {
       final targetIdx = idxByIp != -1
           ? idxByIp
           : matchingMacIdxs.isNotEmpty
-              ? matchingMacIdxs.first
-              : idxByIp;
-      final mergedSources = <String>{..._hosts[targetIdx].sources, ...host.sources};
-      Duration? mergedLatency = _hosts[targetIdx].responseTime ?? host.responseTime;
+          ? matchingMacIdxs.first
+          : idxByIp;
+      final mergedSources = <String>{
+        ..._hosts[targetIdx].sources,
+        ...host.sources,
+      };
+      Duration? mergedLatency =
+          _hosts[targetIdx].responseTime ?? host.responseTime;
       String? mergedHostname = host.hostname ?? _hosts[targetIdx].hostname;
       final mergedOtherNames = <String>{
         ..._hosts[targetIdx].otherNames,
-        ...host.otherNames
+        ...host.otherNames,
       };
       String? mergedVendor = host.vendor ?? _hosts[targetIdx].vendor;
       String? mergedIpv6 = host.ipv6 ?? _hosts[targetIdx].ipv6;
@@ -565,8 +625,9 @@ class _ScanPageState extends State<ScanPage> {
         timeout: math.max(1, (_basePing.inSeconds * _timeoutBump).round()),
       );
       await for (final event in ping.stream.timeout(
-          Duration(milliseconds: timeoutMs),
-          onTimeout: (sink) => sink.close())) {
+        Duration(milliseconds: timeoutMs),
+        onTimeout: (sink) => sink.close(),
+      )) {
         final resp = event.response;
         if (resp == null) continue;
         final dur = resp.time;
@@ -613,7 +674,8 @@ class _ScanPageState extends State<ScanPage> {
     final s = host.sources;
     if (s.isEmpty) return false;
     final onlyIcmp = s.every((e) => e == 'ICMP' || e == 'ICMPv6');
-    final noMetadata = host.macAddress == null &&
+    final noMetadata =
+        host.macAddress == null &&
         host.hostname == null &&
         host.otherNames.isEmpty &&
         host.vendor == null &&
@@ -622,8 +684,7 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   void _sort(List<DiscoveredHost> list, SortColumn column, bool ascending) {
-    int cmp(String a, String b) =>
-        ascending ? a.compareTo(b) : b.compareTo(a);
+    int cmp(String a, String b) => ascending ? a.compareTo(b) : b.compareTo(a);
 
     int macCmp(String? a, String? b) {
       if (a == null && b == null) return 0;
@@ -694,16 +755,37 @@ class _ScanPageState extends State<ScanPage> {
     return (priority, numeric);
   }
 
-  LanScanner _createScanner({required bool doubleTimeouts}) {
+  LanScanner _createScanner({
+    required bool doubleTimeouts,
+    bool fastStart = false,
+  }) {
     final factor = (doubleTimeouts ? 2.0 : 1.0) * _timeoutBump;
+    final isMobile = Platform.isAndroid || Platform.isIOS;
     final cores = math.max(1, Platform.numberOfProcessors);
     final reserved = math.max(1, cores - 1);
-    final parallel = math.max(32, math.min(128, reserved * 8));
-    final pingTimeout =
-        Duration(milliseconds: (_basePing.inMilliseconds * factor).round());
+    final scale = isMobile ? 4 : 8;
+    final minParallel = isMobile ? 16 : 32;
+    final maxParallel = isMobile ? 64 : 128;
+    final parallelBase = math.max(
+      minParallel,
+      math.min(maxParallel, reserved * scale),
+    );
+    final parallel = fastStart ? math.max(12, parallelBase ~/ 2) : parallelBase;
+    final pingScale = fastStart ? 0.70 : 0.85;
+    final pingTimeout = Duration(
+      milliseconds: (_basePing.inMilliseconds * factor * pingScale)
+          .round()
+          .clamp(350, 1200),
+    );
+    final mdnsWindow = Duration(
+      milliseconds: (_baseMdns.inMilliseconds * factor * 0.85).round().clamp(
+        300,
+        1500,
+      ),
+    );
     final selectedInterface = _selectedInterfaceName;
     return LanScanner(
-      debugTiming: true,
+      debugTiming: kDebugMode || _scanDebugTimingOverride,
       enableHttpScan: false,
       deferHttpScan: false,
       parallelRequests: parallel,
@@ -712,27 +794,27 @@ class _ScanPageState extends State<ScanPage> {
       enableReverseDns: true,
       timeoutFactor: factor,
       enableSsdp: true,
-      enableNbnsBroadcast: true,
+      enableNbnsBroadcast: !fastStart,
       enableTlsHostnames: false,
-      enableWsDiscovery: true,
-      enableLlmnr: true,
-      enableMdnsReverse: true,
+      enableWsDiscovery: !fastStart,
+      enableLlmnr: !fastStart,
+      enableMdnsReverse: !fastStart,
       enableSshBanner: false,
       enableTelnetBanner: false,
       enableSmb1: false,
-      enableDnsSearchDomain: true,
+      enableDnsSearchDomain: !fastStart,
       enableSnmpNames: false,
       enableSmbNames: false,
       includeAdvancedHostnames: _includeAdvancedHostnames,
       allowReverseDnsFailure: true,
       allowPingFailure: true,
       enableTcpReachability: false,
-      reverseDnsTimeoutMs: 700,
+      reverseDnsTimeoutMs: fastStart ? 450 : 600,
       pingTimeout: pingTimeout,
-      mdnsListenWindow:
-          Duration(milliseconds: (_baseMdns.inMilliseconds * factor).round()),
-      preferredInterfaceNames:
-          selectedInterface == null ? const [] : [selectedInterface],
+      mdnsListenWindow: mdnsWindow,
+      preferredInterfaceNames: selectedInterface == null
+          ? const []
+          : [selectedInterface],
     );
   }
 }
@@ -804,31 +886,32 @@ class _HostTableState extends State<_HostTable> {
       if (!hideSources) _ColumnKind.sources,
       if (!hideLatency) _ColumnKind.latency,
     ];
-    final minWidths = order.map((kind) {
-      switch (kind) {
-        case _ColumnKind.name:
-          return isCompact ? _widthNameCompact : _widthName;
-        case _ColumnKind.other:
-          return _widthOther;
-        case _ColumnKind.online:
-          return _widthOnline;
-        case _ColumnKind.ipv4:
-          return _widthIpv4;
-        case _ColumnKind.ipv6:
-          return _widthIpv6;
-        case _ColumnKind.mac:
-          return _widthMac;
-        case _ColumnKind.vendor:
-          return _widthVendor;
-        case _ColumnKind.sources:
-          return _widthSources;
-        case _ColumnKind.latency:
-          return _widthLatency;
-      }
-    }).toList(growable: false);
+    final minWidths = order
+        .map((kind) {
+          switch (kind) {
+            case _ColumnKind.name:
+              return isCompact ? _widthNameCompact : _widthName;
+            case _ColumnKind.other:
+              return _widthOther;
+            case _ColumnKind.online:
+              return _widthOnline;
+            case _ColumnKind.ipv4:
+              return _widthIpv4;
+            case _ColumnKind.ipv6:
+              return _widthIpv6;
+            case _ColumnKind.mac:
+              return _widthMac;
+            case _ColumnKind.vendor:
+              return _widthVendor;
+            case _ColumnKind.sources:
+              return _widthSources;
+            case _ColumnKind.latency:
+              return _widthLatency;
+          }
+        })
+        .toList(growable: false);
     return _ColumnLayout(order, minWidths);
   }
-
 
   @override
   void dispose() {
@@ -914,10 +997,9 @@ class _HostTableState extends State<_HostTable> {
       _columnWidths = List<double>.of(minWidths);
     }
     final clamped = List<double>.generate(
-        _columnWidths.length,
-        (i) => _columnWidths[i] < minWidths[i]
-            ? minWidths[i]
-            : _columnWidths[i]);
+      _columnWidths.length,
+      (i) => _columnWidths[i] < minWidths[i] ? minWidths[i] : _columnWidths[i],
+    );
     final total = clamped.reduce((a, b) => a + b);
     if (!maxWidth.isFinite || maxWidth <= total) return clamped;
     if (growableIndexes.isEmpty) return clamped;
@@ -935,8 +1017,9 @@ class _HostTableState extends State<_HostTable> {
   void _updateColumnWidth(int index, double delta) {
     setState(() {
       final next = _columnWidths[index] + delta;
-      _columnWidths[index] =
-          next < _activeMinWidths[index] ? _activeMinWidths[index] : next;
+      _columnWidths[index] = next < _activeMinWidths[index]
+          ? _activeMinWidths[index]
+          : next;
     });
   }
 
@@ -946,16 +1029,12 @@ class _HostTableState extends State<_HostTable> {
       width: width,
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          Expanded(child: Text(label, overflow: TextOverflow.ellipsis)),
           if (resizable)
             GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onPanUpdate: (details) => _updateColumnWidth(index, details.delta.dx),
+              onPanUpdate: (details) =>
+                  _updateColumnWidth(index, details.delta.dx),
               child: MouseRegion(
                 cursor: SystemMouseCursors.resizeColumn,
                 child: Container(
@@ -988,8 +1067,7 @@ class _HostTableState extends State<_HostTable> {
     final ios = Platform.isIOS;
     final isMobile = Platform.isAndroid || Platform.isIOS;
     final colorScheme = Theme.of(context).colorScheme;
-    final altRow =
-        colorScheme.surfaceContainerHighest.withValues(alpha: 0.2);
+    final altRow = colorScheme.surfaceContainerHighest.withValues(alpha: 0.2);
     final sortIndex = _sortColumnIndex(layout);
     final includeAdvanced = widget.includeAdvancedHostnames;
     final nameIndex = layout.indexOf(_ColumnKind.name)!;
@@ -1026,7 +1104,12 @@ class _HostTableState extends State<_HostTable> {
         DataColumn(
           label: SizedBox(
             width: widths[onlineIndex],
-            child: _headerCell('Online', widths[onlineIndex], onlineIndex, true),
+            child: _headerCell(
+              'Online',
+              widths[onlineIndex],
+              onlineIndex,
+              true,
+            ),
           ),
           onSort: (_, asc) => widget.onSort(SortColumn.online, asc),
         ),
@@ -1057,7 +1140,11 @@ class _HostTableState extends State<_HostTable> {
           label: SizedBox(
             width: widths[vendorIndex],
             child: _headerCell(
-                'Vendor', widths[vendorIndex], vendorIndex, !isCompact),
+              'Vendor',
+              widths[vendorIndex],
+              vendorIndex,
+              !isCompact,
+            ),
           ),
           onSort: (_, asc) => widget.onSort(SortColumn.vendor, asc),
         ),
@@ -1066,7 +1153,11 @@ class _HostTableState extends State<_HostTable> {
           label: SizedBox(
             width: widths[sourcesIndex],
             child: _headerCell(
-                'Sources', widths[sourcesIndex], sourcesIndex, !isCompact),
+              'Sources',
+              widths[sourcesIndex],
+              sourcesIndex,
+              !isCompact,
+            ),
           ),
         ),
       if (!hideLatency && latencyIndex != null)
@@ -1074,7 +1165,11 @@ class _HostTableState extends State<_HostTable> {
           label: SizedBox(
             width: widths[latencyIndex],
             child: _headerCell(
-                'Latency', widths[latencyIndex], latencyIndex, !isCompact),
+              'Latency',
+              widths[latencyIndex],
+              latencyIndex,
+              !isCompact,
+            ),
           ),
           onSort: (_, asc) => widget.onSort(SortColumn.latency, asc),
           numeric: true,
@@ -1084,7 +1179,8 @@ class _HostTableState extends State<_HostTable> {
     final filtered = widget.hosts.where((host) {
       if (widget.hideIcmpOnly) {
         final s = host.sources;
-        final icmpOnly = s.isNotEmpty && s.every((e) => e == 'ICMP' || e == 'ICMPv6');
+        final icmpOnly =
+            s.isNotEmpty && s.every((e) => e == 'ICMP' || e == 'ICMPv6');
         if (icmpOnly) return false;
       }
       if (!widget.showOffline && !_isOnlineHost(host)) return false;
@@ -1100,8 +1196,9 @@ class _HostTableState extends State<_HostTable> {
           if (includeAdvanced) host.otherNames.join(', '),
           host.responseTime?.inMilliseconds.toString(),
         ];
-        final matches = haystacks.any((field) =>
-            field != null && field.toLowerCase().contains(term));
+        final matches = haystacks.any(
+          (field) => field != null && field.toLowerCase().contains(term),
+        );
         if (!matches) return false;
       }
       return true;
@@ -1119,8 +1216,11 @@ class _HostTableState extends State<_HostTable> {
           columnSpacing: 0,
           horizontalMargin: 0,
           headingRowHeight: 26,
-          headingTextStyle:
-              TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
+          headingTextStyle: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
           sortAscending: widget.sortAscending,
           sortColumnIndex: sortIndex,
           columns: columns,
@@ -1146,8 +1246,7 @@ class _HostTableState extends State<_HostTable> {
               : host.otherNames.join(', ');
           final ipv6Value = _displayIpv6(host);
           final ipv4Value = _displayIpv4(host);
-          final sources =
-              host.sources.isEmpty ? '—' : host.sources.join(', ');
+          final sources = host.sources.isEmpty ? '—' : host.sources.join(', ');
           final latency = host.responseTime == null
               ? '—'
               : '${host.responseTime!.inMilliseconds} ms';
@@ -1179,10 +1278,7 @@ class _HostTableState extends State<_HostTable> {
                         ),
                         const SizedBox(width: 6),
                         Expanded(
-                          child: Text(
-                            name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          child: Text(name, overflow: TextOverflow.ellipsis),
                         ),
                       ],
                     ),
@@ -1190,54 +1286,46 @@ class _HostTableState extends State<_HostTable> {
                   ],
                 )
               : ios
-                  ? Row(
-                      children: [
-                        Icon(
-                          Icons.circle,
-                          color: online ? Colors.green : Colors.red,
-                          size: 10,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    )
-                  : Text(name);
+              ? Row(
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      color: online ? Colors.green : Colors.red,
+                      size: 10,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(name, overflow: TextOverflow.ellipsis),
+                    ),
+                  ],
+                )
+              : Text(name);
           DataCell makeCell(Widget child) =>
               _cell(child, host, enableLongPress: isCompact);
           return DataRow(
             color: WidgetStateProperty.all(
-                index.isEven ? altRow : colorScheme.surface),
+              index.isEven ? altRow : colorScheme.surface,
+            ),
             cells: [
-              makeCell(
-                SizedBox(width: widths[nameIndex], child: nameCell),
-              ),
+              makeCell(SizedBox(width: widths[nameIndex], child: nameCell)),
               if (otherIndex != null)
                 makeCell(
-                  SizedBox(
-                    width: widths[otherIndex],
-                    child: Text(otherNames),
-                  ),
+                  SizedBox(width: widths[otherIndex], child: Text(otherNames)),
                 ),
               if (onlineIndex != null)
                 makeCell(
                   SizedBox(
                     width: widths[onlineIndex],
                     child: Icon(
-                        Icons.circle,
-                        color: online ? Colors.green : Colors.red,
-                        size: 12,
-                      ),
+                      Icons.circle,
+                      color: online ? Colors.green : Colors.red,
+                      size: 12,
                     ),
                   ),
-              makeCell(
-                  SizedBox(
-                      width: widths[ipv4Index], child: Text(ipv4Value)),
                 ),
+              makeCell(
+                SizedBox(width: widths[ipv4Index], child: Text(ipv4Value)),
+              ),
               if (ipv6Index != null)
                 makeCell(
                   SizedBox(
@@ -1266,18 +1354,17 @@ class _HostTableState extends State<_HostTable> {
               if (!hideVendor && vendorIndex != null)
                 makeCell(
                   SizedBox(
-                      width: widths[vendorIndex],
-                      child: Text(host.vendor ?? 'Unknown')),
+                    width: widths[vendorIndex],
+                    child: Text(host.vendor ?? 'Unknown'),
+                  ),
                 ),
               if (!hideSources && sourcesIndex != null)
                 makeCell(
-                  SizedBox(
-                      width: widths[sourcesIndex], child: Text(sources)),
+                  SizedBox(width: widths[sourcesIndex], child: Text(sources)),
                 ),
               if (!hideLatency && latencyIndex != null)
                 makeCell(
-                  SizedBox(
-                      width: widths[latencyIndex], child: Text(latency)),
+                  SizedBox(width: widths[latencyIndex], child: Text(latency)),
                 ),
             ],
           );
@@ -1329,7 +1416,11 @@ class _HostTableState extends State<_HostTable> {
     );
   }
 
-  DataCell _cell(Widget child, DiscoveredHost host, {bool enableLongPress = true}) {
+  DataCell _cell(
+    Widget child,
+    DiscoveredHost host, {
+    bool enableLongPress = true,
+  }) {
     return DataCell(
       GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -1381,7 +1472,9 @@ class _HostTableState extends State<_HostTable> {
   String _displayIpv4(DiscoveredHost host) {
     final ip = host.ipv4;
     if (ip.isEmpty) return '-';
-    if (ip.contains(':')) return '-'; // don't show IPv6 placeholders in IPv4 column
+    if (ip.contains(':')) {
+      return '-'; // don't show IPv6 placeholders in IPv4 column
+    }
     return ip;
   }
 
@@ -1405,14 +1498,8 @@ class _HostTableState extends State<_HostTable> {
         position.dy,
       ),
       items: [
-        const PopupMenuItem(
-          value: 'copy_name',
-          child: Text('Copy Name'),
-        ),
-        const PopupMenuItem(
-          value: 'copy_ipv4',
-          child: Text('Copy IPv4'),
-        ),
+        const PopupMenuItem(value: 'copy_name', child: Text('Copy Name')),
+        const PopupMenuItem(value: 'copy_ipv4', child: Text('Copy IPv4')),
         PopupMenuItem(
           value: 'copy_ipv6',
           enabled: _displayIpv6(host) != null,
@@ -1457,13 +1544,17 @@ Future<T?> _showInstantMenu<T>({
   required RelativeRect position,
   required List<PopupMenuEntry<T>> items,
 }) {
-  return Navigator.of(context).push(_InstantPopupRoute<T>(
-    position: position,
-    items: items,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    capturedThemes:
-        InheritedTheme.capture(from: context, to: Navigator.of(context).context),
-  ));
+  return Navigator.of(context).push(
+    _InstantPopupRoute<T>(
+      position: position,
+      items: items,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      capturedThemes: InheritedTheme.capture(
+        from: context,
+        to: Navigator.of(context).context,
+      ),
+    ),
+  );
 }
 
 class _InstantPopupRoute<T> extends PopupRoute<T> {
@@ -1494,8 +1585,11 @@ class _InstantPopupRoute<T> extends PopupRoute<T> {
   Color? get barrierColor => null;
 
   @override
-  Widget buildPage(BuildContext context, Animation<double> animation,
-      Animation<double> secondaryAnimation) {
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
     final menu = Builder(
       builder: (context) {
         return CustomSingleChildLayout(
@@ -1528,10 +1622,14 @@ class _PopupMenuRouteLayout extends SingleChildLayoutDelegate {
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
     const double menuScreenPadding = 8.0;
-    final maxWidth = (constraints.maxWidth - menuScreenPadding * 2)
-        .clamp(0.0, double.infinity);
-    final maxHeight = (constraints.maxHeight - menuScreenPadding * 2)
-        .clamp(0.0, double.infinity);
+    final maxWidth = (constraints.maxWidth - menuScreenPadding * 2).clamp(
+      0.0,
+      double.infinity,
+    );
+    final maxHeight = (constraints.maxHeight - menuScreenPadding * 2).clamp(
+      0.0,
+      double.infinity,
+    );
     return BoxConstraints.loose(Size(maxWidth, maxHeight));
   }
 
@@ -1569,13 +1667,11 @@ enum _ColumnKind {
 
 class _ColumnLayout {
   _ColumnLayout(this.order, this.minWidths)
-      : index = {
-          for (var i = 0; i < order.length; i++) order[i]: i,
-        },
-        growableIndexes = [
-          for (var i = 0; i < order.length; i++)
-            if (order[i] != _ColumnKind.online) i,
-        ];
+    : index = {for (var i = 0; i < order.length; i++) order[i]: i},
+      growableIndexes = [
+        for (var i = 0; i < order.length; i++)
+          if (order[i] != _ColumnKind.online) i,
+      ];
 
   final List<_ColumnKind> order;
   final List<double> minWidths;

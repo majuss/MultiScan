@@ -1,6 +1,6 @@
 {
-    "name": "multiscan_app",
-    "short_name": "multiscan_app",
+    "name": "MultiScan",
+    "short_name": "MultiScan",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
