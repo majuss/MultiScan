@@ -11,10 +11,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:multiscan_app/main.dart';
 
 void main() {
-  testWidgets('Launches and shows scan action', (WidgetTester tester) async {
+  testWidgets('Launches and shows app logo', (WidgetTester tester) async {
     await tester.pumpWidget(const MultiScanApp(autoStartScan: false));
 
     expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.byIcon(Icons.wifi_tethering), findsOneWidget);
+    expect(find.byType(MultiScanLogo), findsWidgets);
   });
 }
