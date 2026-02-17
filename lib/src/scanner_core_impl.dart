@@ -209,6 +209,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     Duration? latency;
     String? hostname;
     final otherNames = <String>{};
+    var pingFailed = false;
     var mac = _normalizeMac(arpCache[ip.address]);
     String? vendor;
     DiscoveredHost? lastEmitted;
@@ -301,6 +302,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       try {
         final pingLatency = await _pingOnce(ip);
         if (pingLatency == null) {
+          pingFailed = true;
           if (!allowPingFailure) {
             final hasDnsSignal =
                 (hostname?.isNotEmpty ?? false) ||
@@ -311,10 +313,12 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         } else {
           sources.add('ICMP');
           latency = pingLatency;
+          pingFailed = false;
           emitIfChanged();
         }
       } catch (_) {
         // Some platforms restrict raw ICMP; treat as unreachable.
+        pingFailed = true;
         if (!allowPingFailure) return null;
       }
     }
@@ -479,11 +483,15 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         mac != null ||
         informativeSource ||
         latency != null ||
+        pingFailed ||
         (hostname != null &&
             (sources.contains('mDNS') ||
                 sources.contains('NBNS') ||
                 sources.contains('DNS'))) ||
         otherNames.isNotEmpty;
+    if (pingFailed && latency == null) {
+      sources.add('OFFLINE');
+    }
     if (!hasSignal) return null;
 
     final host = DiscoveredHost(
@@ -3688,6 +3696,19 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     byMac.forEach((mac, indexes) {
       if (indexes.length <= 1) return;
       indexes.sort();
+      // Only dedupe synthetic IPv6-only placeholders (where ipv4 stores ipv6).
+      // Keep distinct IPv4 hosts even when MACs match (e.g. proxy ARP).
+      final placeholderIdxs = indexes
+          .where((idx) => hosts[idx].ipv4 == (hosts[idx].ipv6 ?? ''))
+          .toList();
+      if (placeholderIdxs.isEmpty) return;
+
+      final realIdxs = indexes
+          .where((idx) => !placeholderIdxs.contains(idx))
+          .toList();
+      final mergeIndexes = [...realIdxs, ...placeholderIdxs];
+      if (mergeIndexes.length <= 1) return;
+
       DiscoveredHost pickPrimary(List<int> idxs) {
         // Prefer entries that already have a real IPv4 (not IPv6 placeholder).
         for (final idx in idxs) {
@@ -3697,7 +3718,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         return hosts[idxs.first];
       }
 
-      final primary = pickPrimary(indexes);
+      final primary = pickPrimary(mergeIndexes);
       final primaryIdx = hosts.indexOf(primary);
       String? ipv6 = primary.ipv6;
       String? hostname = primary.hostname;
@@ -3706,7 +3727,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       final otherNames = {...primary.otherNames};
       final sources = {...primary.sources, 'NDP'};
 
-      for (final idx in indexes) {
+      for (final idx in mergeIndexes) {
         if (idx == primaryIdx) continue;
         final h = hosts[idx];
         ipv6 ??= h.ipv6;

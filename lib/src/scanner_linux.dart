@@ -95,19 +95,28 @@ class LinuxScannerPlatform implements ScannerPlatform {
       debug('ip -6 neigh sample: $preview');
     }
     final entries = <NdpEntry>[];
-    final withMac =
-        RegExp(r'([0-9a-fA-F:]+)\s+.*lladdr\s+([0-9a-fA-F:]{11,17})');
-    for (final match in withMac.allMatches(output)) {
-      entries.add(NdpEntry(
-        ipv6: match.group(1)!,
-        mac: normalizeMac(match.group(2)!) ?? match.group(2)!,
-      ));
-    }
-    if (entries.isEmpty) {
-      final withoutMac = RegExp(r'([0-9a-fA-F:]+)\s+dev\s+\S+');
-      for (final match in withoutMac.allMatches(output)) {
-        entries.add(NdpEntry(ipv6: match.group(1)!, mac: ''));
+    final seen = <String>{};
+    final lines = output.split('\n');
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      final parts = line.split(RegExp(r'\s+'));
+      if (parts.isEmpty) continue;
+
+      final ipv6Raw = parts.first.split('%').first;
+      final parsed = InternetAddress.tryParse(ipv6Raw);
+      if (parsed == null || parsed.type != InternetAddressType.IPv6) continue;
+
+      var mac = '';
+      final lladdrIndex = parts.indexOf('lladdr');
+      if (lladdrIndex != -1 && lladdrIndex + 1 < parts.length) {
+        final rawMac = parts[lladdrIndex + 1];
+        mac = normalizeMac(rawMac) ?? rawMac;
       }
+
+      final key = '${parsed.address}|${mac.toLowerCase()}';
+      if (!seen.add(key)) continue;
+      entries.add(NdpEntry(ipv6: parsed.address, mac: mac));
     }
     debug('parsed ${entries.length} NDP entries from ip neigh');
     return entries;
