@@ -397,19 +397,101 @@ class _ScanPageState extends State<ScanPage> {
         : 260.0;
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (isMobile)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isMobile)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 32,
+                            child: TextField(
+                              onChanged: (value) =>
+                                  setState(() => _searchTerm = value.trim()),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                prefixIcon: Icon(Icons.search, size: 18),
+                                hintText: 'Search hosts',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 6,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PopupMenuButton<String>(
+                          tooltip: 'Options',
+                          onSelected: (value) {
+                            if (value != 'show_offline') return;
+                            setState(() {
+                              _showOffline = !_showOffline;
+                              _status = 'Found ${_visibleHostCount()} hosts';
+                            });
+                          },
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: 'show_offline',
+                              child: Text(
+                                'Show offline devices (${_showOffline ? "on" : "off"})',
+                              ),
+                            ),
+                          ],
+                          icon: const Icon(Icons.menu),
+                        ),
+                      ],
+                    )
+                  else
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _buildInterfaceDropdown(isCompact: isCompact),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: _autoPing,
+                              onChanged: (val) {
+                                setState(() => _autoPing = val ?? false);
+                                if (_autoPing) {
+                                  _startAutoPing();
+                                }
+                              },
+                            ),
+                            const Text('Constant ping scanning'),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: _showOffline,
+                              onChanged: (val) {
+                                setState(() {
+                                  _showOffline = val ?? true;
+                                  _status =
+                                      'Found ${_visibleHostCount()} hosts';
+                                });
+                              },
+                            ),
+                            const Text('Show offline'),
+                          ],
+                        ),
+                        SizedBox(
+                          width: searchWidth,
                           height: 32,
                           child: TextField(
                             onChanged: (value) =>
@@ -426,162 +508,85 @@ class _ScanPageState extends State<ScanPage> {
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      PopupMenuButton<String>(
-                        tooltip: 'Options',
-                        onSelected: (value) {
-                          if (value != 'show_offline') return;
-                          setState(() {
-                            _showOffline = !_showOffline;
-                            _status = 'Found ${_visibleHostCount()} hosts';
-                          });
-                        },
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'show_offline',
-                            child: Text(
-                              'Show offline devices (${_showOffline ? "on" : "off"})',
+                        PopupMenuButton<String>(
+                          tooltip: 'Options',
+                          onSelected: (value) {
+                            if (value != 'advanced_hostnames') return;
+                            setState(() {
+                              _includeAdvancedHostnames =
+                                  !_includeAdvancedHostnames;
+                            });
+                            if (!_scanning) {
+                              _startScan();
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            CheckedPopupMenuItem(
+                              value: 'advanced_hostnames',
+                              checked: _includeAdvancedHostnames,
+                              child: const Text('Include advanced hostnames'),
                             ),
-                          ),
-                        ],
-                        icon: const Icon(Icons.menu),
-                      ),
-                    ],
-                  )
-                else
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _buildInterfaceDropdown(isCompact: isCompact),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Checkbox(
-                            value: _autoPing,
-                            onChanged: (val) {
-                              setState(() => _autoPing = val ?? false);
-                              if (_autoPing) {
-                                _startAutoPing();
-                              }
-                            },
-                          ),
-                          const Text('Constant ping scanning'),
-                        ],
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Checkbox(
-                            value: _showOffline,
-                            onChanged: (val) {
-                              setState(() {
-                                _showOffline = val ?? true;
-                                _status = 'Found ${_visibleHostCount()} hosts';
-                              });
-                            },
-                          ),
-                          const Text('Show offline'),
-                        ],
-                      ),
-                      SizedBox(
-                        width: searchWidth,
-                        height: 32,
-                        child: TextField(
-                          onChanged: (value) =>
-                              setState(() => _searchTerm = value.trim()),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            prefixIcon: Icon(Icons.search, size: 18),
-                            hintText: 'Search hosts',
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 6,
-                            ),
-                          ),
+                          ],
+                          child: const Icon(Icons.tune),
                         ),
-                      ),
-                      PopupMenuButton<String>(
-                        tooltip: 'Options',
-                        onSelected: (value) {
-                          if (value != 'advanced_hostnames') return;
-                          setState(() {
-                            _includeAdvancedHostnames =
-                                !_includeAdvancedHostnames;
-                          });
-                          if (!_scanning) {
-                            _startScan();
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          CheckedPopupMenuItem(
-                            value: 'advanced_hostnames',
-                            checked: _includeAdvancedHostnames,
-                            child: const Text('Include advanced hostnames'),
+                        if (!isCompact) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            _status,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
-                        child: const Icon(Icons.tune),
-                      ),
-                      if (!isCompact) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          _status,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
                       ],
-                    ],
-                  ),
-                if (isCompact)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      _status,
-                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                  ),
-                if (isMobile)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: _buildInterfaceDropdown(isCompact: true),
-                  ),
-              ],
+                  if (isCompact)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        _status,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  if (isMobile)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: _buildInterfaceDropdown(isCompact: true),
+                    ),
+                ],
+              ),
             ),
-          ),
-          if (_scanning) const LinearProgressIndicator(minHeight: 2),
-          Expanded(
-            child: _hosts.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        MultiScanLogo(
-                          size: 72,
-                          color: Theme.of(context).colorScheme.secondary,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _scanning
-                              ? 'Scanning...'
-                              : 'No hosts found. Try again or check your network.',
-                        ),
-                      ],
+            if (_scanning) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: _hosts.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          MultiScanLogo(
+                            size: 72,
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _scanning
+                                ? 'Scanning...'
+                                : 'No hosts found. Try again or check your network.',
+                          ),
+                        ],
+                      ),
+                    )
+                  : _HostTable(
+                      hosts: _sortedHosts,
+                      sortColumn: _sortColumn,
+                      sortAscending: _sortAscending,
+                      onSort: _handleSort,
+                      hideIcmpOnly: !_scanning && !_showOffline,
+                      showOffline: _showOffline,
+                      searchTerm: _searchTerm,
+                      includeAdvancedHostnames: _includeAdvancedHostnames,
                     ),
-                  )
-                : _HostTable(
-                    hosts: _sortedHosts,
-                    sortColumn: _sortColumn,
-                    sortAscending: _sortAscending,
-                    onSort: _handleSort,
-                    hideIcmpOnly: !_scanning && !_showOffline,
-                    showOffline: _showOffline,
-                    searchTerm: _searchTerm,
-                    includeAdvancedHostnames: _includeAdvancedHostnames,
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _scanning ? null : _startScan,
