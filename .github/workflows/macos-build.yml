@@ -1,0 +1,55 @@
+name: Build macOS App
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build macOS release
+        run: flutter build macos --release
+
+      - name: Package macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="build/macos/Build/Products/Release/MultiScan.app"
+          OUT_DIR="build/macos/artifacts"
+          OUT_ZIP="$OUT_DIR/multiscan-macos.zip"
+
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "Missing app bundle at $APP_PATH" >&2
+            exit 1
+          fi
+
+          mkdir -p "$OUT_DIR"
+          rm -f "$OUT_ZIP"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$OUT_ZIP"
+          echo "Created $OUT_ZIP"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiscan-macos
+          path: build/macos/artifacts/multiscan-macos.zip
+          if-no-files-found: error

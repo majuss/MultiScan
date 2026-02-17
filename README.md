@@ -241,6 +241,59 @@ Because iOS enforces stricter sandboxing, the UI aims to keep the scan responsiv
 - Output artifact:
   - `multiscan_<version>_amd64.deb` (uploaded in workflow artifacts)
 
+## Linux DEB CI (arm64)
+
+- GitHub Actions workflow: `.github/workflows/linux-deb-arm64.yml`
+- Triggers:
+  - Manual run (`workflow_dispatch`)
+  - Tag push like `v1.2.3`
+  - Published GitHub release
+- Output artifact:
+  - `multiscan_<version>_arm64.deb` (uploaded in workflow artifacts)
+
+## Android APK CI
+
+- GitHub Actions workflow: `.github/workflows/android-apk.yml`
+- Triggers:
+  - Manual run (`workflow_dispatch`)
+  - Tag push like `v1.2.3`
+  - Published GitHub release
+- Output artifact:
+  - APK from `build/app/outputs/flutter-apk/*.apk` (uploaded in workflow artifacts)
+
+## Windows CI (amd64 + arm64)
+
+- GitHub Actions workflows:
+  - `.github/workflows/windows-amd64.yml`
+  - `.github/workflows/windows-arm64.yml`
+- Triggers:
+  - Manual run (`workflow_dispatch`)
+  - Tag push like `v1.2.3`
+  - Published GitHub release
+- Output artifacts:
+  - `multiscan-windows-amd64.zip`
+  - `multiscan-windows-arm64.zip`
+
+## macOS CI
+
+- GitHub Actions workflow: `.github/workflows/macos-build.yml`
+- Triggers:
+  - Manual run (`workflow_dispatch`)
+  - Tag push like `v1.2.3`
+  - Published GitHub release
+- Output artifact:
+  - `multiscan-macos.zip`
+
+## iOS Unsigned CI
+
+- GitHub Actions workflow: `.github/workflows/ios-unsigned.yml`
+- Triggers:
+  - Manual run (`workflow_dispatch`)
+  - Tag push like `v1.2.3`
+  - Published GitHub release
+- Output artifact:
+  - `MultiScan-unsigned.ipa` (for AltStore/Sideloadly re-signing)
+
 ## Extending
 
 - Add new discovery sources in `scanner_core_impl.dart` and merge into `DiscoveredHost.sources`.
