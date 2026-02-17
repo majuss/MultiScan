@@ -20,6 +20,10 @@ const bool _scanInitialFull = bool.fromEnvironment(
   'SCAN_INITIAL_FULL',
   defaultValue: false,
 );
+const bool _delayIosDebugAutostart = bool.fromEnvironment(
+  'SCAN_DELAY_IOS_DEBUG_AUTOSTART',
+  defaultValue: true,
+);
 
 class MultiScanLogo extends StatelessWidget {
   const MultiScanLogo({super.key, this.size = 28, this.color});
@@ -173,11 +177,22 @@ class _ScanPageState extends State<ScanPage> {
   void initState() {
     super.initState();
     if (widget.autoStartScan) {
-      // Render the first frame before starting potentially slow network discovery.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_initInterfaces());
-      });
+      // On iOS debug, delay startup scan work to avoid debugger attach races.
+      final shouldDelayAutostart =
+          _delayIosDebugAutostart && kDebugMode && Platform.isIOS;
+      if (shouldDelayAutostart) {
+        _status = 'Initializing debugger session...';
+        Future<void>.delayed(const Duration(seconds: 2), () {
+          if (!mounted) return;
+          unawaited(_initInterfaces());
+        });
+      } else {
+        // Render the first frame before starting potentially slow network discovery.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(_initInterfaces());
+        });
+      }
     } else {
       _status = 'Idle';
     }
@@ -920,11 +935,16 @@ class _ScanPageState extends State<ScanPage> {
     final pingScale = isAndroid
         ? (fastStart ? 1.00 : 1.10)
         : (fastStart ? 0.70 : 0.85);
-    final maxHostsPerInterface = isAndroid ? 254 : 256;
+    final maxHostsPerInterface = isAndroid
+        ? 254
+        : (isIOS ? (fastStart ? 160 : 220) : 256);
     final pingTimeout = Duration(
       milliseconds: (_basePing.inMilliseconds * factor * pingScale)
           .round()
-          .clamp(isAndroid ? 320 : 350, isAndroid ? 1400 : 1200),
+          .clamp(
+            isAndroid ? 320 : (isIOS ? 320 : 350),
+            isAndroid ? 1400 : (isIOS ? 1050 : 1200),
+          ),
     );
     final mdnsWindow = Duration(
       milliseconds: (_baseMdns.inMilliseconds * factor * 0.85).round().clamp(
@@ -944,7 +964,7 @@ class _ScanPageState extends State<ScanPage> {
       enableNbns: true,
       enableReverseDns: true,
       timeoutFactor: factor,
-      enableSsdp: true,
+      enableSsdp: isIOS ? !fastStart : true,
       enableNbnsBroadcast: !fastStart && !androidAggressive,
       enableTlsHostnames: false,
       enableWsDiscovery: !fastStart && !androidAggressive,

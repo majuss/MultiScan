@@ -168,8 +168,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     // Exclude network and broadcast: (2^hostbits - 2).
     final maxHosts = max(0, (1 << (32 - prefix)) - 2);
     // Keep desktop behavior of scanning full /24 networks.
-    // On Android, cap even /24 scans to avoid slow, battery-heavy sweeps.
-    final shouldCap = Platform.isAndroid || prefix < 24;
+    // On mobile, cap even /24 scans to avoid slow, battery-heavy sweeps.
+    final shouldCap = Platform.isAndroid || Platform.isIOS || prefix < 24;
     final hostCount = shouldCap
         ? min(maxHosts, maxHostsPerInterface)
         : maxHosts;
@@ -2614,29 +2614,32 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   Future<Duration?> _tcpReachable(InternetAddress ip) async {
     _spanStart(_tcpSpan);
     try {
-      final ports = <int>[
-        80,
-        443,
-        22,
-        53,
-        139,
-        445,
-        554,
-        8008,
-        8009,
-        8080,
-        8443,
-        9100,
-        9999,
-      ];
+      final ports = Platform.isIOS
+          ? <int>[80, 443, 22, 53, 8080, 8443]
+          : <int>[
+              80,
+              443,
+              22,
+              53,
+              139,
+              445,
+              554,
+              8008,
+              8009,
+              8080,
+              8443,
+              9100,
+              9999,
+            ];
       final connectTimeout = Duration(
-        milliseconds:
-            (ScannerDefaults.tcpReachableTimeoutBaseMs * timeoutFactor)
-                .round()
-                .clamp(
-                  ScannerDefaults.tcpReachableTimeoutMinMs,
-                  ScannerDefaults.tcpReachableTimeoutMaxMs,
-                ),
+        milliseconds: Platform.isIOS
+            ? 320
+            : (ScannerDefaults.tcpReachableTimeoutBaseMs * timeoutFactor)
+                  .round()
+                  .clamp(
+                    ScannerDefaults.tcpReachableTimeoutMinMs,
+                    ScannerDefaults.tcpReachableTimeoutMaxMs,
+                  ),
       );
       for (final port in ports) {
         final timer = Stopwatch()..start();
