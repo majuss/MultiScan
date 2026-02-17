@@ -259,8 +259,13 @@ Because iOS enforces stricter sandboxing, the UI aims to keep the scan responsiv
   - Tag push like `v1.2.3`
   - Published GitHub release
 - Output artifact:
-  - `multiscan-android-v<version>-debug.apk` (installable test APK)
-  - `multiscan-android-v<version>-release-unsigned.apk` or `multiscan-android-v<version>-release.apk`
+  - `multiscan-android-v<version>-release-signed.apk`
+  - `multiscan-android-v<version>-release-signed.apk.sha256`
+- Required GitHub secrets for signing:
+  - `ANDROID_KEYSTORE_BASE64`
+  - `ANDROID_KEYSTORE_PASSWORD`
+  - `ANDROID_KEY_ALIAS`
+  - `ANDROID_KEY_PASSWORD`
 
 ## Windows CI (amd64 + arm64)
 
