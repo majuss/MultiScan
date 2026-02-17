@@ -32,12 +32,41 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build APKs
+        run: |
+          flutter build apk --debug
+          flutter build apk --release
+
+      - name: Rename APK artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$(sed -nE 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' pubspec.yaml | head -n1)"
+          if [[ -z "$VERSION" ]]; then
+            VERSION="0.0.0"
+          fi
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          SRC_DIR="build/app/outputs/flutter-apk"
+          OUT_DIR="build/app/outputs/artifacts"
+          mkdir -p "$OUT_DIR"
+
+          if [[ -f "$SRC_DIR/app-debug.apk" ]]; then
+            cp -f "$SRC_DIR/app-debug.apk" "$OUT_DIR/multiscan-android-v${VERSION}-debug.apk"
+          fi
+
+          if [[ -f "$SRC_DIR/app-release-unsigned.apk" ]]; then
+            cp -f "$SRC_DIR/app-release-unsigned.apk" "$OUT_DIR/multiscan-android-v${VERSION}-release-unsigned.apk"
+          elif [[ -f "$SRC_DIR/app-release.apk" ]]; then
+            cp -f "$SRC_DIR/app-release.apk" "$OUT_DIR/multiscan-android-v${VERSION}-release.apk"
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: multiscan-android-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/artifacts/*.apk
           if-no-files-found: error
