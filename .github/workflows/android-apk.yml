@@ -32,12 +32,40 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Build APKs
+      - name: Configure Android signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          flutter build apk --debug
-          flutter build apk --release
+          set -euo pipefail
 
-      - name: Rename APK artifacts
+          for var in \
+            ANDROID_KEYSTORE_BASE64 \
+            ANDROID_KEYSTORE_PASSWORD \
+            ANDROID_KEY_ALIAS \
+            ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!var:-}" ]]; then
+              echo "Missing required GitHub secret: $var" >&2
+              exit 1
+            fi
+          done
+
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
+
+          cat > android/key.properties <<EOF
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Build signed release APK
+        run: flutter build apk --release
+
+      - name: Prepare APK artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -54,19 +82,21 @@ jobs:
           OUT_DIR="build/app/outputs/artifacts"
           mkdir -p "$OUT_DIR"
 
-          if [[ -f "$SRC_DIR/app-debug.apk" ]]; then
-            cp -f "$SRC_DIR/app-debug.apk" "$OUT_DIR/multiscan-android-v${VERSION}-debug.apk"
+          APK_PATH="$SRC_DIR/app-release.apk"
+          if [[ ! -f "$APK_PATH" ]]; then
+            echo "Missing signed release APK at $APK_PATH" >&2
+            exit 1
           fi
 
-          if [[ -f "$SRC_DIR/app-release-unsigned.apk" ]]; then
-            cp -f "$SRC_DIR/app-release-unsigned.apk" "$OUT_DIR/multiscan-android-v${VERSION}-release-unsigned.apk"
-          elif [[ -f "$SRC_DIR/app-release.apk" ]]; then
-            cp -f "$SRC_DIR/app-release.apk" "$OUT_DIR/multiscan-android-v${VERSION}-release.apk"
-          fi
+          FINAL_APK="$OUT_DIR/multiscan-android-v${VERSION}-release-signed.apk"
+          cp -f "$APK_PATH" "$FINAL_APK"
+          sha256sum "$FINAL_APK" > "$FINAL_APK.sha256"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: multiscan-android-apk
-          path: build/app/outputs/artifacts/*.apk
+          path: |
+            build/app/outputs/artifacts/*.apk
+            build/app/outputs/artifacts/*.sha256
           if-no-files-found: error
