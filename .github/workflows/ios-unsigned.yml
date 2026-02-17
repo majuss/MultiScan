@@ -1,0 +1,40 @@
+name: Build iOS Unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+
+jobs:
+  build-ios-unsigned:
+    runs-on: macos-15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build unsigned iOS IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/build_ios_sideload.sh --mode unsigned
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiscan-ios-unsigned
+          path: build/ios/ipa/MultiScan-unsigned.ipa
+          if-no-files-found: error

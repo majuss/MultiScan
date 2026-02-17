@@ -1,0 +1,114 @@
+name: Build Linux DEB (arm64)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+
+jobs:
+  build-deb-arm64:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            libblkid-dev \
+            liblzma-dev \
+            patchelf
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Linux release bundle
+        run: flutter build linux --release
+
+      - name: Build .deb package (arm64)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_NAME="multiscan"
+          BUNDLE_DIR="build/linux/arm64/release/bundle"
+          if [[ ! -d "$BUNDLE_DIR" ]]; then
+            # Fallback in case Flutter output layout differs.
+            BUNDLE_DIR="build/linux/x64/release/bundle"
+          fi
+          STAGE_DIR="build/deb_stage_arm64"
+          OUT_DIR="build/linux/deb"
+
+          if [[ ! -d "$BUNDLE_DIR" ]]; then
+            echo "Missing Linux bundle under build/linux/*/release/bundle" >&2
+            exit 1
+          fi
+
+          VERSION="$(sed -nE 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' pubspec.yaml | head -n1)"
+          if [[ -z "$VERSION" ]]; then
+            echo "Failed to parse version from pubspec.yaml" >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          rm -rf "$STAGE_DIR"
+          mkdir -p \
+            "$STAGE_DIR/DEBIAN" \
+            "$STAGE_DIR/opt/$APP_NAME" \
+            "$STAGE_DIR/usr/bin" \
+            "$OUT_DIR"
+
+          cp -R "$BUNDLE_DIR"/. "$STAGE_DIR/opt/$APP_NAME/"
+
+          cat > "$STAGE_DIR/usr/bin/$APP_NAME" <<'EOF'
+          #!/usr/bin/env bash
+          exec /opt/multiscan/MultiScan "$@"
+          EOF
+          chmod 0755 "$STAGE_DIR/usr/bin/$APP_NAME"
+
+          INSTALLED_SIZE="$(du -sk "$STAGE_DIR/opt/$APP_NAME" | awk '{print $1}')"
+          ARCH="arm64"
+
+          cat > "$STAGE_DIR/DEBIAN/control" <<EOF
+          Package: ${APP_NAME}
+          Version: ${VERSION}
+          Section: net
+          Priority: optional
+          Architecture: ${ARCH}
+          Maintainer: MultiScan
+          Depends: libgtk-3-0, libblkid1, liblzma5
+          Installed-Size: ${INSTALLED_SIZE}
+          Description: MultiScan LAN network scanner built with Flutter
+           Multiplatform local network scanner with host discovery and enrichment.
+          EOF
+
+          DEB_PATH="$OUT_DIR/${APP_NAME}_${VERSION}_${ARCH}.deb"
+          dpkg-deb --build --root-owner-group "$STAGE_DIR" "$DEB_PATH"
+          echo "Built $DEB_PATH"
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiscan-deb-arm64
+          path: build/linux/deb/*_arm64.deb
+          if-no-files-found: error
