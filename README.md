@@ -231,6 +231,16 @@ Because iOS enforces stricter sandboxing, the UI aims to keep the scan responsiv
 
 - Build/signing instructions for publishing sideloadable iOS artifacts are in `docs/IOS_SIDELOAD.md`.
 
+## Linux DEB CI
+
+- GitHub Actions workflow: `.github/workflows/linux-deb.yml`
+- Triggers:
+  - Manual run (`workflow_dispatch`)
+  - Tag push like `v1.2.3`
+  - Published GitHub release
+- Output artifact:
+  - `multiscan_<version>_amd64.deb` (uploaded in workflow artifacts)
+
 ## Extending
 
 - Add new discovery sources in `scanner_core_impl.dart` and merge into `DiscoveredHost.sources`.
