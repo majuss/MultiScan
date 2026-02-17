@@ -259,7 +259,8 @@ Because iOS enforces stricter sandboxing, the UI aims to keep the scan responsiv
   - Tag push like `v1.2.3`
   - Published GitHub release
 - Output artifact:
-  - APK from `build/app/outputs/flutter-apk/*.apk` (uploaded in workflow artifacts)
+  - `multiscan-android-v<version>-debug.apk` (installable test APK)
+  - `multiscan-android-v<version>-release-unsigned.apk` or `multiscan-android-v<version>-release.apk`
 
 ## Windows CI (amd64 + arm64)
 
