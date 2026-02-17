@@ -110,9 +110,11 @@ class _EthernetLogoPainter extends CustomPainter {
 
 bool _isOnlineHost(DiscoveredHost host) {
   if (host.responseTime != null) return true;
-  const weakSignals = {'DNS', 'ICMP', 'ICMPv6', 'ARP'};
+  const weakSignals = {'DNS', 'ICMP', 'ICMPv6', 'ARP', 'OFFLINE'};
   return host.sources.any((s) => !weakSignals.contains(s));
 }
+
+bool _hasDnsFinding(DiscoveredHost host) => host.sources.contains('DNS');
 
 void main() {
   runApp(const MultiScanApp());
@@ -395,19 +397,6 @@ class _ScanPageState extends State<ScanPage> {
         : 260.0;
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const MultiScanLogo(size: 24),
-            const SizedBox(width: 10),
-            Text('MultiScan', style: Theme.of(context).textTheme.titleMedium),
-          ],
-        ),
-        actions: const [],
-        toolbarHeight: 56,
-        elevation: 0.5,
-        automaticallyImplyLeading: false,
-      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -649,22 +638,11 @@ class _ScanPageState extends State<ScanPage> {
             !host.sources.every((s) => s.startsWith('ICMP')));
     if (!hasUsefulData) return;
 
-    final mac = (host.macAddress ?? '').toLowerCase();
     final idxByIp = _hosts.indexWhere((h) => h.ipv4 == host.ipv4);
-    final matchingMacIdxs = mac.isEmpty
-        ? <int>[]
-        : List<int>.generate(_hosts.length, (i) => i)
-              .where((i) => (_hosts[i].macAddress ?? '').toLowerCase() == mac)
-              .toList();
-
-    if (idxByIp == -1 && matchingMacIdxs.isEmpty) {
+    if (idxByIp == -1) {
       _hosts.add(host);
     } else {
-      final targetIdx = idxByIp != -1
-          ? idxByIp
-          : matchingMacIdxs.isNotEmpty
-          ? matchingMacIdxs.first
-          : idxByIp;
+      final targetIdx = idxByIp;
       final mergedSources = <String>{
         ..._hosts[targetIdx].sources,
         ...host.sources,
@@ -686,22 +664,6 @@ class _ScanPageState extends State<ScanPage> {
       if (host.hostname != null && host.hostname != mergedHostname) {
         mergedOtherNames.add(host.hostname!);
       }
-
-      // Fold in any other entries with the same MAC.
-      for (final idx in matchingMacIdxs) {
-        if (idx == targetIdx) continue;
-        final h = _hosts[idx];
-        mergedSources.addAll(h.sources);
-        mergedLatency ??= h.responseTime;
-        mergedHostname ??= h.hostname;
-        mergedVendor ??= h.vendor;
-        mergedIpv6 ??= h.ipv6;
-        mergedMac ??= h.macAddress;
-        if (h.hostname != null && h.hostname != mergedHostname) {
-          mergedOtherNames.add(h.hostname!);
-        }
-        mergedOtherNames.addAll(h.otherNames);
-      }
       if (mergedHostname != null) {
         mergedOtherNames.remove(mergedHostname);
       }
@@ -716,15 +678,6 @@ class _ScanPageState extends State<ScanPage> {
         responseTime: mergedLatency,
       );
       _hosts[targetIdx] = merged;
-
-      // Drop duplicates beyond the target.
-      if (matchingMacIdxs.length > 1) {
-        final removals = matchingMacIdxs.where((i) => i != targetIdx).toList()
-          ..sort((a, b) => b.compareTo(a));
-        for (final idx in removals) {
-          _hosts.removeAt(idx);
-        }
-      }
     }
     if (sort) _sortHosts();
     if (updateStatus) {
@@ -819,6 +772,9 @@ class _ScanPageState extends State<ScanPage> {
     return _hosts.where((h) {
       if (!_showOffline && _isIcmpOnly(h)) return false;
       if (!_showOffline && !_isOnlineHost(h)) return false;
+      if (_showOffline && !_isOnlineHost(h) && !_hasDnsFinding(h)) {
+        return false;
+      }
       return true;
     }).length;
   }
@@ -915,6 +871,7 @@ class _ScanPageState extends State<ScanPage> {
     final factor = (doubleTimeouts ? 2.0 : 1.0) * _timeoutBump;
     final isAndroid = Platform.isAndroid;
     final isIOS = Platform.isIOS;
+    final isLinux = Platform.isLinux;
     final isMobile = Platform.isAndroid || Platform.isIOS;
     final cores = math.max(1, Platform.numberOfProcessors);
     final reserved = math.max(1, cores - 1);
@@ -954,6 +911,12 @@ class _ScanPageState extends State<ScanPage> {
     );
     final selectedInterface = _selectedInterfaceName;
     final androidAggressive = isAndroid;
+    final reverseDnsTimeoutMs = isLinux
+        ? (fastStart ? 1800 : 2600)
+        : (fastStart ? 900 : 1200);
+    final enableDnsSearchDomain = isLinux
+        ? true
+        : (!fastStart && !androidAggressive);
     return LanScanner(
       debugTiming: _scanDebugTimingOverride || (kDebugMode && !isAndroid),
       maxHostsPerInterface: maxHostsPerInterface,
@@ -973,14 +936,14 @@ class _ScanPageState extends State<ScanPage> {
       enableSshBanner: false,
       enableTelnetBanner: false,
       enableSmb1: false,
-      enableDnsSearchDomain: !fastStart && !androidAggressive,
+      enableDnsSearchDomain: enableDnsSearchDomain,
       enableSnmpNames: false,
       enableSmbNames: false,
       includeAdvancedHostnames: _includeAdvancedHostnames,
       allowReverseDnsFailure: true,
       allowPingFailure: true,
       enableTcpReachability: isIOS,
-      reverseDnsTimeoutMs: fastStart ? 900 : 1200,
+      reverseDnsTimeoutMs: reverseDnsTimeoutMs,
       enableArpCache: !androidAggressive,
       enableNdp: !androidAggressive,
       enableIpv6Discovery: !androidAggressive,
@@ -1359,6 +1322,9 @@ class _HostTableState extends State<_HostTable> {
         if (icmpOnly) return false;
       }
       if (!widget.showOffline && !_isOnlineHost(host)) return false;
+      if (widget.showOffline && !_isOnlineHost(host) && !_hasDnsFinding(host)) {
+        return false;
+      }
       final term = widget.searchTerm.toLowerCase();
       if (term.isNotEmpty) {
         final haystacks = [
