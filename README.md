@@ -227,6 +227,10 @@ Because iOS enforces stricter sandboxing, the UI aims to keep the scan responsiv
 - Scanning defaults: `maxHostsPerInterface = 512`, `parallelRequests = 128`, ping timeout = 1000 ms * timeout factor, mDNS listen window = 600 ms * timeout factor. Adjust in `_createScanner` / `LanScanner` for your network.
 - Hostnames come from multiple sources: reverse DNS, NBNS, mDNS service discovery, HTTP/HTTPS title sniffing, SNMP sysName, and background refreshes.
 
+## iOS Sideload Build
+
+- Build/signing instructions for publishing sideloadable iOS artifacts are in `docs/IOS_SIDELOAD.md`.
+
 ## Extending
 
 - Add new discovery sources in `scanner_core_impl.dart` and merge into `DiscoveredHost.sources`.
