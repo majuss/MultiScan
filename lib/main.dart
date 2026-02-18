@@ -386,6 +386,9 @@ class _ScanPageState extends State<ScanPage> {
 
   @override
   Widget build(BuildContext context) {
+    final topSystemInset = Platform.isAndroid
+        ? MediaQuery.viewPaddingOf(context).top
+        : 0.0;
     final isCompact = MediaQuery.of(context).size.shortestSide < 600;
     final isMobile = Platform.isAndroid || Platform.isIOS;
     final availableSearchWidth = math.max(
@@ -398,13 +401,13 @@ class _ScanPageState extends State<ScanPage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: SafeArea(
-        top: true,
+        top: false,
         bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              padding: EdgeInsets.fromLTRB(12, 2 + topSystemInset, 12, 2),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
