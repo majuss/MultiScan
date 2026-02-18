@@ -27,7 +27,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows release (arm64)
-        run: flutter build windows --release --target-platform windows-arm64
+        run: flutter build windows --release
 
       - name: Package build output
         shell: pwsh
