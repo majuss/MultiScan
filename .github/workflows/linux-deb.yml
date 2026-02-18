@@ -72,6 +72,8 @@ jobs:
             "$STAGE_DIR/DEBIAN" \
             "$STAGE_DIR/opt/$APP_NAME" \
             "$STAGE_DIR/usr/bin" \
+            "$STAGE_DIR/usr/share/applications" \
+            "$STAGE_DIR/usr/share/icons/hicolor/192x192/apps" \
             "$OUT_DIR"
 
           cp -R "$BUNDLE_DIR"/. "$STAGE_DIR/opt/$APP_NAME/"
@@ -81,6 +83,22 @@ jobs:
           exec /opt/multiscan/MultiScan "$@"
           EOF
           chmod 0755 "$STAGE_DIR/usr/bin/$APP_NAME"
+
+          cat > "$STAGE_DIR/usr/share/applications/${APP_NAME}.desktop" <<EOF
+          [Desktop Entry]
+          Name=MultiScan
+          Comment=LAN network scanner
+          Exec=/usr/bin/${APP_NAME}
+          Icon=${APP_NAME}
+          Terminal=false
+          Type=Application
+          Categories=Network;Utility;
+          EOF
+          chmod 0644 "$STAGE_DIR/usr/share/applications/${APP_NAME}.desktop"
+
+          cp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
+            "$STAGE_DIR/usr/share/icons/hicolor/192x192/apps/${APP_NAME}.png"
+          chmod 0644 "$STAGE_DIR/usr/share/icons/hicolor/192x192/apps/${APP_NAME}.png"
 
           INSTALLED_SIZE="$(du -sk "$STAGE_DIR/opt/$APP_NAME" | awk '{print $1}')"
           ARCH="amd64"
