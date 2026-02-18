@@ -39,22 +39,33 @@ class LanScanner extends LanScannerCore {
     super.allowReverseDnsFailure = ScannerDefaults.allowReverseDnsFailure,
     super.allowPingFailure = ScannerDefaults.allowPingFailure,
     super.enableTcpReachability = ScannerDefaults.enableTcpReachability,
-    super.requireReverseDnsForProbes = ScannerDefaults.requireReverseDnsForProbes,
+    super.requireReverseDnsForProbes =
+        ScannerDefaults.requireReverseDnsForProbes,
     int? reverseDnsTimeoutMs,
     super.preferredInterfaceNames = ScannerDefaults.preferredInterfaceNames,
   }) : super(
-          reverseDnsTimeoutMs:
-              reverseDnsTimeoutMs ?? ScannerDefaults.defaultReverseDnsTimeoutMs,
-        );
+         reverseDnsTimeoutMs:
+             reverseDnsTimeoutMs ??
+             (ScannerDefaults.defaultReverseDnsTimeoutMs * 1.3).round(),
+       );
 }
 
 class WindowsScannerPlatform implements ScannerPlatform {
   @override
-  Future<Map<String, String>> readArpCache(Duration timeout) async => {};
+  Future<Map<String, String>> readArpCache(Duration timeout) async {
+    final result = await _runProcessWithTimeout('arp', ['-a'], timeout);
+    final out = result?.stdout.toString() ?? '';
+    return _parseArpOutput(out);
+  }
 
   @override
-  Future<String?> resolveMacAddress(InternetAddress ip, Duration timeout) async =>
-      null;
+  Future<String?> resolveMacAddress(
+    InternetAddress ip,
+    Duration timeout,
+  ) async {
+    final cache = await readArpCache(timeout);
+    return cache[ip.address];
+  }
 
   @override
   Future<List<NdpEntry>> readNdpCache(
@@ -116,12 +127,16 @@ class WindowsScannerPlatform implements ScannerPlatform {
   }
 
   @override
-  List<InterfaceInfo> filterInterfaces(List<InterfaceInfo> list,
-          {String? wifiIp}) =>
-      list;
+  List<InterfaceInfo> filterInterfaces(
+    List<InterfaceInfo> list, {
+    String? wifiIp,
+  }) => list;
 
   Future<ProcessResult?> _runProcessWithTimeout(
-      String executable, List<String> arguments, Duration timeout) async {
+    String executable,
+    List<String> arguments,
+    Duration timeout,
+  ) async {
     try {
       return await Process.run(executable, arguments).timeout(timeout);
     } on TimeoutException {
@@ -129,5 +144,21 @@ class WindowsScannerPlatform implements ScannerPlatform {
     } catch (_) {
       return null;
     }
+  }
+
+  Map<String, String> _parseArpOutput(String output) {
+    final entries = <String, String>{};
+    final lineRegex = RegExp(
+      r'^\s*(\d+\.\d+\.\d+\.\d+)\s+([0-9A-Fa-f:-]{11,17})\s+\w+\s*$',
+    );
+    for (final line in output.split('\n')) {
+      final match = lineRegex.firstMatch(line);
+      if (match == null) continue;
+      final ip = match.group(1);
+      final mac = match.group(2);
+      if (ip == null || mac == null) continue;
+      entries[ip] = mac;
+    }
+    return entries;
   }
 }
