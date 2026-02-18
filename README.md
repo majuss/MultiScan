@@ -314,3 +314,7 @@ Because iOS enforces stricter sandboxing, the UI aims to keep the scan responsiv
 - Extend Windows ARP/NDP support by parsing `arp -a` and `netsh interface ipv6 show neighbors`.
 - Add columns or filters: extend `_HostTable` in `main.dart` and update the sorting logic.
 - Tuning performance: tweak `parallelRequests`, reduce `maxHostsPerInterface`, or adjust timeouts for slower networks.
+
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See `LICENSE`.
