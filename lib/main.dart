@@ -879,6 +879,7 @@ class _ScanPageState extends State<ScanPage> {
     final factor = (doubleTimeouts ? 2.0 : 1.0) * _timeoutBump;
     final isAndroid = Platform.isAndroid;
     final isIOS = Platform.isIOS;
+    final isWindows = Platform.isWindows;
     final isLinux = Platform.isLinux;
     final isMobile = Platform.isAndroid || Platform.isIOS;
     final cores = math.max(1, Platform.numberOfProcessors);
@@ -922,6 +923,9 @@ class _ScanPageState extends State<ScanPage> {
     final reverseDnsTimeoutMs = isLinux
         ? (fastStart ? 1800 : 2600)
         : (fastStart ? 900 : 1200);
+    final effectiveReverseDnsTimeoutMs = isWindows
+        ? (reverseDnsTimeoutMs * 1.3).round()
+        : reverseDnsTimeoutMs;
     final enableDnsSearchDomain = isLinux
         ? true
         : (!fastStart && !androidAggressive);
@@ -951,7 +955,7 @@ class _ScanPageState extends State<ScanPage> {
       allowReverseDnsFailure: true,
       allowPingFailure: true,
       enableTcpReachability: isIOS,
-      reverseDnsTimeoutMs: reverseDnsTimeoutMs,
+      reverseDnsTimeoutMs: effectiveReverseDnsTimeoutMs,
       enableArpCache: !androidAggressive,
       enableNdp: !androidAggressive,
       enableIpv6Discovery: !androidAggressive,
