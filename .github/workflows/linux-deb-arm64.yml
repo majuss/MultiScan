@@ -24,7 +24,9 @@ jobs:
           set -euo pipefail
           git clone https://github.com/flutter/flutter.git -b stable --depth 1 "$HOME/flutter"
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
-          flutter --version
+
+      - name: Verify Flutter
+        run: flutter --version
 
       - name: Install Linux build dependencies
         run: |
