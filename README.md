@@ -1,6 +1,14 @@
 # MultiScan
 True multiplatform LAN scanning tool. The last one you ever need. Written in Flutter.
 
+[![Android APK](https://github.com/majuss/MultiScan/actions/workflows/android-apk.yml/badge.svg)](https://github.com/majuss/MultiScan/actions/workflows/android-apk.yml)
+[![iOS Unsigned IPA](https://github.com/majuss/MultiScan/actions/workflows/ios-unsigned.yml/badge.svg)](https://github.com/majuss/MultiScan/actions/workflows/ios-unsigned.yml)
+[![macOS App](https://github.com/majuss/MultiScan/actions/workflows/macos-build.yml/badge.svg)](https://github.com/majuss/MultiScan/actions/workflows/macos-build.yml)
+[![Linux DEB amd64](https://github.com/majuss/MultiScan/actions/workflows/linux-deb.yml/badge.svg)](https://github.com/majuss/MultiScan/actions/workflows/linux-deb.yml)
+[![Linux DEB arm64](https://github.com/majuss/MultiScan/actions/workflows/linux-deb-arm64.yml/badge.svg)](https://github.com/majuss/MultiScan/actions/workflows/linux-deb-arm64.yml)
+[![Windows amd64](https://github.com/majuss/MultiScan/actions/workflows/windows-amd64.yml/badge.svg)](https://github.com/majuss/MultiScan/actions/workflows/windows-amd64.yml)
+[![Windows arm64](https://github.com/majuss/MultiScan/actions/workflows/windows-arm64.yml/badge.svg)](https://github.com/majuss/MultiScan/actions/workflows/windows-arm64.yml)
+
 Flutter desktop/mobile app that scans the local network, discovers hosts, and surfaces details like IPs, MAC addresses (where the OS allows it), hostnames, mDNS/NBNS signals, and ICMP latency. This README documents the code structure and provides platform-specific documentation for how each build behaves.
 
 ## App Structure
