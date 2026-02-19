@@ -132,9 +132,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     );
     if (list.isNotEmpty) {
       _cachedInterfaces = List<InterfaceInfo>.from(list);
-      _LanScannerCoreBase._lastKnownInterfaces = List<InterfaceInfo>.from(
-        list,
-      );
+      _LanScannerCoreBase._lastKnownInterfaces = List<InterfaceInfo>.from(list);
     } else if (_LanScannerCoreBase._lastKnownInterfaces != null &&
         _LanScannerCoreBase._lastKnownInterfaces!.isNotEmpty) {
       final fallback = List<InterfaceInfo>.from(
@@ -160,7 +158,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       return NetworkInterface.list(
         includeLoopback: includeLoopback,
         includeLinkLocal: includeLinkLocal,
-      ).timeout(ScannerDefaults.interfaceListTimeout, onTimeout: () => const []);
+      ).timeout(
+        ScannerDefaults.interfaceListTimeout,
+        onTimeout: () => const [],
+      );
     }
 
     var interfaces = await listWithTimeout(
@@ -956,9 +957,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
               milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs,
             ),
           );
-    final raw = await _platform.readArpCache(
-      timeout,
-    );
+    final raw = await _platform.readArpCache(timeout);
     final map = <String, String>{};
     for (final entry in raw.entries) {
       final normalized = _normalizeMac(entry.value);
@@ -1055,10 +1054,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
               milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs,
             ),
           );
-    final result = await _platform.resolveMacAddress(
-      ip,
-      timeout,
-    );
+    final result = await _platform.resolveMacAddress(ip, timeout);
     return result == null ? null : _normalizeMac(result);
   }
 
@@ -2677,11 +2673,13 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     Duration timeout,
   ) async {
     final timeoutMs = max(1, timeout.inMilliseconds);
-    final result = await _runProcessWithTimeout(
-      'ping',
-      ['-n', '1', '-w', '$timeoutMs', ip.address],
-      timeout + const Duration(milliseconds: 300),
-    );
+    final result = await _runProcessWithTimeout('ping', [
+      '-n',
+      '1',
+      '-w',
+      '$timeoutMs',
+      ip.address,
+    ], timeout + const Duration(milliseconds: 300));
     if (result == null || result.exitCode != 0) return null;
     final out = result.stdout.toString();
     final underOneMs = RegExp(r'<\s*1\s*ms', caseSensitive: false);
@@ -4013,7 +4011,15 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     if (raw == null) return null;
     // Keep printable ASCII; drop control/non-breaking/null chars.
     final cleaned = raw.replaceAll(RegExp(r'[^\x20-\x7E]'), '').trim();
-    return cleaned.isEmpty ? null : cleaned;
+    if (cleaned.isEmpty) return null;
+    final lower = cleaned.toLowerCase();
+    // Drop reverse-DNS placeholders and IP literals to avoid materializing
+    // every probed IP as a "named" offline host.
+    if (lower.endsWith('.in-addr.arpa') || lower.endsWith('.ip6.arpa')) {
+      return null;
+    }
+    if (InternetAddress.tryParse(cleaned) != null) return null;
+    return cleaned;
   }
 
   bool _isWeakHostname(String name) {
