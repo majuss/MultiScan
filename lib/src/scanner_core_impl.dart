@@ -15,6 +15,15 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         _cachedInterfaces!.isNotEmpty) {
       return List<InterfaceInfo>.from(_cachedInterfaces!);
     }
+    if (preferredInterfaceNames.isNotEmpty &&
+        (_cachedInterfaces == null || _cachedInterfaces!.isEmpty) &&
+        _LanScannerCoreBase._lastKnownInterfaces != null &&
+        _LanScannerCoreBase._lastKnownInterfaces!.isNotEmpty) {
+      _cachedInterfaces = List<InterfaceInfo>.from(
+        _LanScannerCoreBase._lastKnownInterfaces!,
+      );
+      return List<InterfaceInfo>.from(_cachedInterfaces!);
+    }
     InterfaceInfo? wifiInterface;
     // NetworkInfo calls are fast; NetworkInterface.list can be slow on some platforms.
     final networkInfo = NetworkInfo();
@@ -79,6 +88,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       }
       if (list.isNotEmpty) {
         _cachedInterfaces = List<InterfaceInfo>.from(list);
+        _LanScannerCoreBase._lastKnownInterfaces = List<InterfaceInfo>.from(
+          list,
+        );
       }
       _debug(
         'interfaces collected: ${list.map((i) => '${i.name} ${i.address.address}/${i.prefixLength}').join(', ')}',
@@ -118,6 +130,22 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     _debug(
       'interfaces collected: ${list.map((i) => '${i.name} ${i.address.address}/${i.prefixLength}').join(', ')}',
     );
+    if (list.isNotEmpty) {
+      _cachedInterfaces = List<InterfaceInfo>.from(list);
+      _LanScannerCoreBase._lastKnownInterfaces = List<InterfaceInfo>.from(
+        list,
+      );
+    } else if (_LanScannerCoreBase._lastKnownInterfaces != null &&
+        _LanScannerCoreBase._lastKnownInterfaces!.isNotEmpty) {
+      final fallback = List<InterfaceInfo>.from(
+        _LanScannerCoreBase._lastKnownInterfaces!,
+      );
+      _debug(
+        'interfaces empty; reusing last-known interfaces: ${fallback.map((i) => '${i.name} ${i.address.address}/${i.prefixLength}').join(', ')}',
+      );
+      _cachedInterfaces = fallback;
+      return fallback;
+    }
     return list;
   }
 

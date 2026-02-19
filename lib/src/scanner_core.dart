@@ -104,6 +104,7 @@ abstract class _LanScannerCoreBase {
   final bool requireReverseDnsForProbes;
   final ScannerPlatform _platform = ScannerPlatform.current();
   List<InterfaceInfo>? _cachedInterfaces;
+  static List<InterfaceInfo>? _lastKnownInterfaces;
   List<InternetAddress> _dnsServers = const [];
   int _timingDepth = 0;
   final _TimingSpan _reverseDnsSpan = _TimingSpan();
