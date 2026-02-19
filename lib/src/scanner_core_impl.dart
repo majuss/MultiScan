@@ -125,36 +125,40 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     String? wifiIp,
     String? wifiMask,
   }) async {
-    var interfaces = await NetworkInterface.list(
+    Future<List<NetworkInterface>> listWithTimeout({
+      required bool includeLoopback,
+      required bool includeLinkLocal,
+    }) async {
+      return NetworkInterface.list(
+        includeLoopback: includeLoopback,
+        includeLinkLocal: includeLinkLocal,
+      ).timeout(ScannerDefaults.interfaceListTimeout, onTimeout: () => const []);
+    }
+
+    var interfaces = await listWithTimeout(
       includeLoopback: false,
       includeLinkLocal: false,
-    ).timeout(ScannerDefaults.interfaceListTimeout, onTimeout: () => const []);
+    );
     _debug(
       'interfaces primary=${interfaces.length} wifiIp=$wifiIp wifiMask=$wifiMask',
     );
     if (interfaces.isEmpty) {
-      try {
-        interfaces = await NetworkInterface.list(
-          includeLoopback: false,
-          includeLinkLocal: false,
-        );
-      } catch (_) {}
+      interfaces = await listWithTimeout(
+        includeLoopback: false,
+        includeLinkLocal: false,
+      );
     }
     if (interfaces.isEmpty) {
-      try {
-        interfaces = await NetworkInterface.list(
-          includeLoopback: false,
-          includeLinkLocal: true,
-        );
-      } catch (_) {}
+      interfaces = await listWithTimeout(
+        includeLoopback: false,
+        includeLinkLocal: true,
+      );
     }
     if (interfaces.isEmpty) {
-      try {
-        interfaces = await NetworkInterface.list(
-          includeLoopback: true,
-          includeLinkLocal: true,
-        );
-      } catch (_) {}
+      interfaces = await listWithTimeout(
+        includeLoopback: true,
+        includeLinkLocal: true,
+      );
     }
     _debug('interfaces fallback=${interfaces.length}');
     return interfaces;
@@ -483,13 +487,12 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         mac != null ||
         informativeSource ||
         latency != null ||
-        pingFailed ||
         (hostname != null &&
             (sources.contains('mDNS') ||
                 sources.contains('NBNS') ||
                 sources.contains('DNS'))) ||
         otherNames.isNotEmpty;
-    if (pingFailed && latency == null) {
+    if (pingFailed && latency == null && hasSignal) {
       sources.add('OFFLINE');
     }
     if (!hasSignal) return null;
@@ -914,10 +917,19 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
   Future<Map<String, String>> _readArpCache() async {
     if (!enableArpCache) return {};
+    final timeout = Platform.isWindows
+        ? _nonHostnameTimeout(
+            const Duration(
+              milliseconds: ScannerDefaults.nonHostnameTimeoutProcessMs,
+            ),
+          )
+        : _nonHostnameTimeout(
+            const Duration(
+              milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs,
+            ),
+          );
     final raw = await _platform.readArpCache(
-      _nonHostnameTimeout(
-        const Duration(milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs),
-      ),
+      timeout,
     );
     final map = <String, String>{};
     for (final entry in raw.entries) {
@@ -1004,11 +1016,20 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
 
   Future<String?> _resolveMacAddress(InternetAddress ip) async {
     if (!enableArpCache) return null;
+    final timeout = Platform.isWindows
+        ? _nonHostnameTimeout(
+            const Duration(
+              milliseconds: ScannerDefaults.nonHostnameTimeoutProcessMs,
+            ),
+          )
+        : _nonHostnameTimeout(
+            const Duration(
+              milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs,
+            ),
+          );
     final result = await _platform.resolveMacAddress(
       ip,
-      _nonHostnameTimeout(
-        const Duration(milliseconds: ScannerDefaults.nonHostnameTimeoutBaseMs),
-      ),
+      timeout,
     );
     return result == null ? null : _normalizeMac(result);
   }
@@ -2597,6 +2618,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     _spanStart(_icmpSpan);
     try {
       final effectiveTimeout = _nonHostnameTimeout(pingTimeout);
+      if (Platform.isWindows) {
+        return await _pingOnceWindows(ip, effectiveTimeout);
+      }
       final ping = Ping(
         ip.address,
         count: 1,
@@ -2618,6 +2642,32 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       _spanEnd(_icmpSpan);
     }
     return null;
+  }
+
+  Future<Duration?> _pingOnceWindows(
+    InternetAddress ip,
+    Duration timeout,
+  ) async {
+    final timeoutMs = max(1, timeout.inMilliseconds);
+    final result = await _runProcessWithTimeout(
+      'ping',
+      ['-n', '1', '-w', '$timeoutMs', ip.address],
+      timeout + const Duration(milliseconds: 300),
+    );
+    if (result == null || result.exitCode != 0) return null;
+    final out = result.stdout.toString();
+    final underOneMs = RegExp(r'<\s*1\s*ms', caseSensitive: false);
+    if (underOneMs.hasMatch(out)) {
+      return const Duration(milliseconds: 1);
+    }
+    final latency = RegExp(r'(\d+)\s*ms', caseSensitive: false).firstMatch(out);
+    if (latency != null) {
+      final ms = int.tryParse(latency.group(1) ?? '');
+      if (ms != null) {
+        return Duration(milliseconds: ms);
+      }
+    }
+    return const Duration(milliseconds: 1);
   }
 
   Future<Duration?> _tcpReachable(InternetAddress ip) async {
@@ -2849,6 +2899,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     var withVendor = 0;
     var withLatency = 0;
     var withDnsLike = 0;
+    var withArp = 0;
+    var withOnline = 0;
     const dnsLikeSources = {
       'DNS',
       'DNS-SRV',
@@ -2868,6 +2920,12 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       if (host.macAddress != null && host.macAddress!.isNotEmpty) withMac++;
       if (host.vendor != null && host.vendor!.isNotEmpty) withVendor++;
       if (host.responseTime != null) withLatency++;
+      final online =
+          host.responseTime != null ||
+          host.sources.contains('ICMP') ||
+          host.sources.contains('ICMPv6');
+      if (online) withOnline++;
+      if (host.sources.contains('ARP')) withArp++;
       if (host.sources.any(dnsLikeSources.contains)) {
         withDnsLike++;
       }
@@ -2879,6 +2937,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     final bySource = sourcePairs.map((k) => '$k=${sourceCounts[k]}').join(', ');
     _debug(
       'scan summary: hosts=${hosts.length} name=$withName otherNames=$withOtherNames ipv6=$withIpv6 mac=$withMac vendor=$withVendor latency=$withLatency dnsLike=$withDnsLike',
+    );
+    _debug(
+      'scan summary row: total=${hosts.length} arp=$withArp named=$withName online=$withOnline offline=${hosts.length - withOnline}',
     );
     _debug('scan summary sources: $bySource');
     onProgress?.call('Scan summary logged');
@@ -3092,7 +3153,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     if (!enableArpCache) return;
     Future<void>(() async {
       final refreshedCache = await _readArpCache();
-      await _mergeArpCacheHosts(refreshedCache, interfaces, hosts, onHost);
+      await _mergeArpCacheHosts(refreshedCache, hosts, onHost);
       for (var i = 0; i < hosts.length; i++) {
         final host = hosts[i];
         final currentMac = host.macAddress;
@@ -3115,28 +3176,8 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     });
   }
 
-  bool _ipInSubnet(InternetAddress ip, InterfaceInfo iface) {
-    if (ip.type != InternetAddressType.IPv4) return false;
-    final prefix = iface.prefixLength;
-    if (prefix <= 0) return false;
-    final mask = prefix == 32
-        ? 0xFFFFFFFF
-        : (~((1 << (32 - prefix)) - 1) & 0xFFFFFFFF);
-    final ipInt = _ipv4ToInt(ip);
-    final ifaceInt = _ipv4ToInt(iface.address);
-    return (ipInt & mask) == (ifaceInt & mask);
-  }
-
-  bool _ipInAnySubnet(InternetAddress ip, List<InterfaceInfo> interfaces) {
-    for (final iface in interfaces) {
-      if (_ipInSubnet(ip, iface)) return true;
-    }
-    return false;
-  }
-
   Future<void> _mergeArpCacheHosts(
     Map<String, String> arpCache,
-    List<InterfaceInfo> interfaces,
     List<DiscoveredHost> hosts,
     HostUpdateCallback? onHost,
   ) async {
@@ -3147,7 +3188,10 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     for (final entry in arpCache.entries) {
       final ip = InternetAddress.tryParse(entry.key);
       if (ip == null || ip.type != InternetAddressType.IPv4) continue;
-      if (!_ipInAnySubnet(ip, interfaces)) continue;
+      final o = ip.rawAddress;
+      if (o.length != 4) continue;
+      // Keep only unicast IPv4 ARP neighbors.
+      if (o[0] >= 224 || ip.address == '255.255.255.255') continue;
       if (indexByIp.containsKey(entry.key)) continue;
       final mac = _normalizeMac(entry.value);
       if (mac == null || mac.isEmpty) continue;
@@ -3828,6 +3872,39 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   Future<void> _warmNdp(List<InterfaceInfo> interfaces) async {
     Future<void> pingAll() async {
       _debug('warming NDP on ${interfaces.length} interfaces');
+      if (Platform.isWindows) {
+        for (final iface in interfaces) {
+          try {
+            final result = await _runProcessWithTimeout(
+              'ping',
+              ['-6', '-n', '1', '-w', '900', 'ff02::1%${iface.name}'],
+              _nonHostnameTimeout(
+                const Duration(
+                  milliseconds: ScannerDefaults.nonHostnameTimeoutProcessMs,
+                ),
+              ),
+            );
+            _debug(
+              'ping -6 ff02::1%${iface.name} on ${iface.name} exit=${result?.exitCode}',
+            );
+            if (result == null || result.exitCode != 0) {
+              await _runProcessWithTimeout(
+                'ping',
+                ['-6', '-n', '1', '-w', '900', 'ff02::1'],
+                _nonHostnameTimeout(
+                  const Duration(
+                    milliseconds: ScannerDefaults.nonHostnameTimeoutProcessMs,
+                  ),
+                ),
+              );
+              _debug('fallback ping -6 ff02::1 on ${iface.name}');
+            }
+          } catch (_) {
+            // ignore failures; best-effort to populate neighbor cache
+          }
+        }
+        return;
+      }
       for (final iface in interfaces) {
         try {
           var result = await _runProcessWithTimeout(

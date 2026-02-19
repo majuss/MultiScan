@@ -199,7 +199,7 @@ class LanScannerCore extends _LanScannerCoreBase with _LanScannerCoreImpl {
               .map((ip) => _ipv4ToInt(ip!))
               .toSet();
           onProgress?.call('ARP cache ready (${arpCache.length})');
-          await _mergeArpCacheHosts(arpCache, interfaces, hosts, onHost);
+          await _mergeArpCacheHosts(arpCache, hosts, onHost);
         });
       } else {
         onProgress?.call('ARP cache disabled');

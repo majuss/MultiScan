@@ -110,13 +110,8 @@ class _EthernetLogoPainter extends CustomPainter {
 
 bool _isOnlineHost(DiscoveredHost host) {
   if (host.responseTime != null) return true;
-  // On many LANs, ICMP is blocked; ARP+MAC is still a strong "host present" signal.
-  if (host.macAddress != null && host.sources.contains('ARP')) return true;
-  const weakSignals = {'DNS', 'ICMP', 'ICMPv6', 'ARP', 'OFFLINE'};
-  return host.sources.any((s) => !weakSignals.contains(s));
+  return host.sources.contains('ICMP') || host.sources.contains('ICMPv6');
 }
-
-bool _hasDnsFinding(DiscoveredHost host) => host.sources.contains('DNS');
 
 void main() {
   runApp(const MultiScanApp());
@@ -217,9 +212,12 @@ class _ScanPageState extends State<ScanPage> {
     setState(() {
       _scanning = true;
       _status = fastStart
-          ? 'Preparing quick scan...'
-          : 'Preparing full scan...';
-      _hosts.clear();
+          ? (_hosts.isEmpty
+                ? 'Preparing quick scan...'
+                : 'Rescanning quickly (keeping current hosts)...')
+          : (_hosts.isEmpty
+                ? 'Preparing full scan...'
+                : 'Rescanning (keeping current hosts)...');
       _pendingHostUpdates.clear();
       _hostFlushTimer?.cancel();
       _hostFlushTimer = null;
@@ -270,7 +268,8 @@ class _ScanPageState extends State<ScanPage> {
     _initialScanStarted = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _scanning) return;
-      unawaited(_startScan(fastStart: !_scanInitialFull));
+      final useFastStart = !_scanInitialFull && !Platform.isWindows;
+      unawaited(_startScan(fastStart: useFastStart));
     });
   }
 
@@ -783,9 +782,6 @@ class _ScanPageState extends State<ScanPage> {
     return _hosts.where((h) {
       if (!_showOffline && _isIcmpOnly(h)) return false;
       if (!_showOffline && !_isOnlineHost(h)) return false;
-      if (_showOffline && !_isOnlineHost(h) && !_hasDnsFinding(h)) {
-        return false;
-      }
       return true;
     }).length;
   }
@@ -931,7 +927,8 @@ class _ScanPageState extends State<ScanPage> {
         : reverseDnsTimeoutMs;
     final enableDnsSearchDomain = isLinux
         ? true
-        : (!fastStart && !androidAggressive);
+        : (isWindows ? true : (!fastStart && !androidAggressive));
+    final enableDesktopNameEnrichment = isWindows || !fastStart;
     return LanScanner(
       debugTiming: _scanDebugTimingOverride || (kDebugMode && !isAndroid),
       maxHostsPerInterface: maxHostsPerInterface,
@@ -943,11 +940,12 @@ class _ScanPageState extends State<ScanPage> {
       enableReverseDns: true,
       timeoutFactor: factor,
       enableSsdp: isIOS ? !fastStart : true,
-      enableNbnsBroadcast: !fastStart && !androidAggressive,
+      enableNbnsBroadcast:
+          enableDesktopNameEnrichment && !androidAggressive,
       enableTlsHostnames: false,
-      enableWsDiscovery: !fastStart && !androidAggressive,
-      enableLlmnr: !fastStart && !androidAggressive,
-      enableMdnsReverse: !fastStart && !androidAggressive,
+      enableWsDiscovery: enableDesktopNameEnrichment && !androidAggressive,
+      enableLlmnr: enableDesktopNameEnrichment && !androidAggressive,
+      enableMdnsReverse: enableDesktopNameEnrichment && !androidAggressive,
       enableSshBanner: false,
       enableTelnetBanner: false,
       enableSmb1: false,
@@ -1337,9 +1335,6 @@ class _HostTableState extends State<_HostTable> {
         if (icmpOnly) return false;
       }
       if (!widget.showOffline && !_isOnlineHost(host)) return false;
-      if (widget.showOffline && !_isOnlineHost(host) && !_hasDnsFinding(host)) {
-        return false;
-      }
       final term = widget.searchTerm.toLowerCase();
       if (term.isNotEmpty) {
         final haystacks = [
