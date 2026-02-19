@@ -12,8 +12,8 @@ class OUILookup {
     if (_map != null) return;
     _loading ??= () async {
       final raw = await _bundle.loadString('oui.csv');
-      final rows = const CsvToListConverter(
-        shouldParseNumbers: false,
+      final rows = const CsvDecoder(
+        dynamicTyping: false,
       ).convert(raw);
       final map = <String, String>{};
       for (final row in rows.skip(1)) {

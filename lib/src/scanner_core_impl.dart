@@ -2601,6 +2601,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         ip.address,
         count: 1,
         timeout: max(1, effectiveTimeout.inSeconds),
+        encoding: systemEncoding,
       );
       await for (final event in ping.stream.timeout(
         effectiveTimeout,
@@ -3660,6 +3661,7 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
             ipv6,
             count: 1,
             timeout: max(1, effectiveTimeout.inSeconds),
+            encoding: systemEncoding,
           );
           await for (final event in ping.stream.timeout(
             effectiveTimeout,

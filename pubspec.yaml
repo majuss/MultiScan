@@ -31,10 +31,10 @@ dependencies:
   flutter:
     sdk: flutter
   collection: ^1.18.0
-  csv: ^6.0.0
+  csv: ^7.1.0
   dart_ping: ^9.0.1
   multicast_dns: ^0.3.1
-  network_info_plus: ^6.0.1
+  network_info_plus: ^7.0.0
   universal_io: ^2.2.2
 
   # The following adds the Cupertino Icons font to your application.
