@@ -110,6 +110,8 @@ class _EthernetLogoPainter extends CustomPainter {
 
 bool _isOnlineHost(DiscoveredHost host) {
   if (host.responseTime != null) return true;
+  // On many LANs, ICMP is blocked; ARP+MAC is still a strong "host present" signal.
+  if (host.macAddress != null && host.sources.contains('ARP')) return true;
   const weakSignals = {'DNS', 'ICMP', 'ICMPv6', 'ARP', 'OFFLINE'};
   return host.sources.any((s) => !weakSignals.contains(s));
 }
@@ -737,6 +739,7 @@ class _ScanPageState extends State<ScanPage> {
         ip,
         count: 2,
         timeout: math.max(1, (_basePing.inSeconds * _timeoutBump).round()),
+        encoding: systemEncoding,
       );
       await for (final event in ping.stream.timeout(
         Duration(milliseconds: timeoutMs),
