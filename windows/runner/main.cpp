@@ -25,8 +25,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
+  const int width = 1920;
+  const int height = 1080;
+  const int screen_width = ::GetSystemMetrics(SM_CXSCREEN);
+  const int screen_height = ::GetSystemMetrics(SM_CYSCREEN);
+  const int origin_x = (screen_width - width) / 2;
+  const int origin_y = (screen_height - height) / 2;
+  Win32Window::Point origin(origin_x < 0 ? 0 : origin_x,
+                            origin_y < 0 ? 0 : origin_y);
+  Win32Window::Size size(width, height);
   if (!window.Create(L"MultiScan", origin, size)) {
     return EXIT_FAILURE;
   }
