@@ -27,10 +27,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   const int width = 1920;
   const int height = 1080;
+  const UINT dpi = ::GetDpiForSystem();
   const int screen_width = ::GetSystemMetrics(SM_CXSCREEN);
   const int screen_height = ::GetSystemMetrics(SM_CYSCREEN);
-  const int origin_x = (screen_width - width) / 2;
-  const int origin_y = (screen_height - height) / 2;
+  const int logical_screen_width =
+      dpi > 0 ? MulDiv(screen_width, 96, static_cast<int>(dpi)) : screen_width;
+  const int logical_screen_height = dpi > 0
+      ? MulDiv(screen_height, 96, static_cast<int>(dpi))
+      : screen_height;
+  const int origin_x = (logical_screen_width - width) / 2;
+  const int origin_y = (logical_screen_height - height) / 2;
   Win32Window::Point origin(origin_x < 0 ? 0 : origin_x,
                             origin_y < 0 ? 0 : origin_y);
   Win32Window::Size size(width, height);
