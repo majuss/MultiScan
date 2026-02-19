@@ -4090,7 +4090,11 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     }();
 
     if (bytes == null || bytes.isEmpty) return null;
-    return bytes.map((b) => b.toUpperCase()).join(':');
+    final normalized = bytes.map((b) => b.toUpperCase()).toList();
+    final allZero = normalized.every((b) => b == '00');
+    final allBroadcast = normalized.every((b) => b == 'FF');
+    if (allZero || allBroadcast) return null;
+    return normalized.join(':');
   }
 }
 
