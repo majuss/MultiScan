@@ -110,7 +110,22 @@ class _EthernetLogoPainter extends CustomPainter {
 
 bool _isOnlineHost(DiscoveredHost host) {
   if (host.responseTime != null) return true;
-  return host.sources.contains('ICMP') || host.sources.contains('ICMPv6');
+  if (host.sources.contains('ICMP') || host.sources.contains('ICMPv6')) {
+    return true;
+  }
+  if (!Platform.isMacOS) return false;
+
+  // On macOS, many active devices drop ICMP but still expose strong LAN signals.
+  final hasDiscoverySignal =
+      host.macAddress != null ||
+      host.sources.contains('ARP') ||
+      host.sources.contains('mDNS') ||
+      host.sources.contains('NBNS') ||
+      host.sources.contains('NBNS-BCAST') ||
+      host.sources.contains('WSD') ||
+      host.sources.contains('SSDP') ||
+      host.sources.contains('TCP');
+  return hasDiscoverySignal;
 }
 
 void main() {
@@ -940,8 +955,7 @@ class _ScanPageState extends State<ScanPage> {
       enableReverseDns: true,
       timeoutFactor: factor,
       enableSsdp: isIOS ? !fastStart : true,
-      enableNbnsBroadcast:
-          enableDesktopNameEnrichment && !androidAggressive,
+      enableNbnsBroadcast: enableDesktopNameEnrichment && !androidAggressive,
       enableTlsHostnames: false,
       enableWsDiscovery: enableDesktopNameEnrichment && !androidAggressive,
       enableLlmnr: enableDesktopNameEnrichment && !androidAggressive,
