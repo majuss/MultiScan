@@ -277,23 +277,42 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       if (_shouldIgnoreWeakName(clean, source, sources, hostname)) {
         return;
       }
+      String effectiveName = clean;
+      if (source == 'DNS') {
+        final stripped = _stripLanDomain(clean);
+        if (stripped != clean && stripped.isNotEmpty) {
+          effectiveName = stripped;
+          if (includeAdvancedHostnames) {
+            otherNames.add(clean);
+          }
+        }
+      }
       if (source == 'HTTP') {
         if (hostname == null || hostname!.isEmpty) {
-          hostname = clean;
-        } else if (clean != hostname) {
+          hostname = effectiveName;
+        } else if (effectiveName != hostname) {
           final previous = hostname;
-          hostname = clean;
+          hostname = effectiveName;
           if (includeAdvancedHostnames &&
               previous != null &&
               previous.isNotEmpty &&
-              previous != clean) {
+              previous != effectiveName) {
             otherNames.add(previous);
           }
         }
       } else if (hostname == null || hostname!.isEmpty) {
-        hostname = clean;
-      } else if (clean != hostname && includeAdvancedHostnames) {
-        otherNames.add(clean);
+        hostname = effectiveName;
+      } else if (effectiveName != hostname) {
+        if (source == 'mDNS' || source == 'NBNS') {
+          if (hostname!.contains('.') && !effectiveName.contains('.')) {
+            otherNames.add(hostname!);
+            hostname = effectiveName;
+          } else if (includeAdvancedHostnames) {
+            otherNames.add(effectiveName);
+          }
+        } else if (includeAdvancedHostnames) {
+          otherNames.add(effectiveName);
+        }
       }
       sources.add(source);
       emitIfChanged();
@@ -461,14 +480,20 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     // mDNS (pre-collected)
     final mdnsInfo = mdnsNames[ip.address];
     if (mdnsInfo != null) {
-      final clean = _cleanHostname(mdnsInfo.name);
-      if (clean != null) {
+      final rawClean = _cleanHostname(mdnsInfo.name);
+      final clean = rawClean != null ? _stripLanDomain(rawClean) : null;
+      if (clean != null && clean.isNotEmpty) {
         if (hostname == null ||
             hostname!.isEmpty ||
             _isWeakHostname(hostname!)) {
           hostname = clean;
         } else if (clean != hostname) {
-          otherNames.add(clean);
+          if (hostname!.contains('.') && !clean.contains('.')) {
+            otherNames.add(hostname!);
+            hostname = clean;
+          } else {
+            otherNames.add(clean);
+          }
         }
       }
       if (mdnsInfo.aliases.isNotEmpty) {
@@ -2645,6 +2670,9 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       if (Platform.isWindows) {
         return await _pingOnceWindows(ip, effectiveTimeout);
       }
+      if (Platform.isAndroid) {
+        return await _pingOnceAndroid(ip, effectiveTimeout);
+      }
       final ping = Ping(
         ip.address,
         count: 1,
@@ -2661,10 +2689,55 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         }
       }
     } catch (_) {
-      // Ignore ping errors; treated as offline.
     } finally {
       _spanEnd(_icmpSpan);
     }
+    return null;
+  }
+
+  Future<Duration?> _pingOnceAndroid(
+    InternetAddress ip,
+    Duration timeout,
+  ) async {
+    final sw = Stopwatch()..start();
+    const ports = [80, 443, 53, 22, 8080, 5353];
+    final connectTimeout = Duration(
+      milliseconds: timeout.inMilliseconds.clamp(200, 600),
+    );
+    for (final port in ports) {
+      try {
+        final socket = await Socket.connect(
+          ip.address,
+          port,
+          timeout: connectTimeout,
+        );
+        socket.destroy();
+        return sw.elapsed;
+      } on SocketException {
+        continue;
+      } on TimeoutException {
+        continue;
+      } catch (_) {
+        continue;
+      }
+    }
+    try {
+      final ping = Ping(
+        ip.address,
+        count: 1,
+        timeout: max(1, timeout.inSeconds),
+        encoding: systemEncoding,
+      );
+      await for (final event in ping.stream.timeout(
+        timeout,
+        onTimeout: (sink) => sink.close(),
+      )) {
+        final response = event.response;
+        if (response != null) {
+          return response.time ?? timeout;
+        }
+      }
+    } catch (_) {}
     return null;
   }
 
@@ -2701,24 +2774,26 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     try {
       final ports = Platform.isIOS
           ? <int>[80, 443, 22, 53, 8080, 8443]
-          : <int>[
-              80,
-              443,
-              22,
-              53,
-              139,
-              445,
-              554,
-              8008,
-              8009,
-              8080,
-              8443,
-              9100,
-              9999,
-            ];
+          : Platform.isAndroid
+              ? <int>[139, 445, 554, 8443, 9100]
+              : <int>[
+                  80,
+                  443,
+                  22,
+                  53,
+                  139,
+                  445,
+                  554,
+                  8008,
+                  8009,
+                  8080,
+                  8443,
+                  9100,
+                  9999,
+                ];
       final connectTimeout = Duration(
-        milliseconds: Platform.isIOS
-            ? 320
+        milliseconds: (Platform.isIOS || Platform.isAndroid)
+            ? 300
             : (ScannerDefaults.tcpReachableTimeoutBaseMs * timeoutFactor)
                   .round()
                   .clamp(
@@ -3266,12 +3341,21 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
                         ),
               ),
             );
-            final name = _cleanHostname(dns.host);
+            final rawName = _cleanHostname(dns.host);
+            final name = rawName != null ? _stripLanDomain(rawName) : null;
             if (name != null && name.isNotEmpty) {
+              if (rawName != name && rawName!.isNotEmpty && includeAdvancedHostnames) {
+                otherNames.add(rawName);
+              }
               if (hostname == null || hostname.isEmpty) {
                 hostname = name;
-              } else if (name != hostname && includeAdvancedHostnames) {
-                otherNames.add(name);
+              } else if (name != hostname) {
+                if (hostname.contains('.') && !name.contains('.')) {
+                  otherNames.add(hostname);
+                  hostname = name;
+                } else if (includeAdvancedHostnames) {
+                  otherNames.add(name);
+                }
               }
               sources.add('DNS');
             }
@@ -3350,16 +3434,23 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
       }
 
       for (var i = 0; i < targets.length; i++) {
-        final name = _cleanHostname(results[i]);
+        final rawName = _cleanHostname(results[i]);
+        final name = rawName != null ? _stripLanDomain(rawName) : null;
         if (name == null || name.isEmpty) continue;
         final host = targets[i];
         final idx = indexForIp(host.ipv4);
         if (idx == null) continue;
         final current = hosts[idx];
         final otherNames = {...current.otherNames};
+        if (rawName != name && rawName!.isNotEmpty && includeAdvancedHostnames) {
+          otherNames.add(rawName);
+        }
         final existingHostname = current.hostname ?? host.hostname;
         String resolvedHostname;
         if (existingHostname == null || existingHostname.isEmpty) {
+          resolvedHostname = name;
+        } else if (existingHostname.contains('.') && !name.contains('.')) {
+          otherNames.add(existingHostname);
           resolvedHostname = name;
         } else {
           resolvedHostname = existingHostname;
@@ -3417,16 +3508,23 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
         }
 
         for (var i = 0; i < targets.length; i++) {
-          final name = _cleanHostname(results[i]);
+          final rawName = _cleanHostname(results[i]);
+          final name = rawName != null ? _stripLanDomain(rawName) : null;
           if (name == null || name.isEmpty) continue;
           final host = targets[i];
           final idx = indexForIp(host.ipv4);
           if (idx == null) continue;
           final current = hosts[idx];
           final otherNames = {...current.otherNames};
+          if (rawName != name && rawName!.isNotEmpty && includeAdvancedHostnames) {
+            otherNames.add(rawName);
+          }
           final existingHostname = current.hostname ?? host.hostname;
           String resolvedHostname;
           if (existingHostname == null || existingHostname.isEmpty) {
+            resolvedHostname = name;
+          } else if (existingHostname.contains('.') && !name.contains('.')) {
+            otherNames.add(existingHostname);
             resolvedHostname = name;
           } else {
             resolvedHostname = existingHostname;
@@ -3555,25 +3653,35 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
   ) {
     final indexByIp = {for (var i = 0; i < hosts.length; i++) hosts[i].ipv4: i};
     mdnsMap.forEach((ip, info) {
-      final cleanName = _cleanHostname(info.name);
+      final rawClean = _cleanHostname(info.name);
+      final cleanName = rawClean != null ? _stripLanDomain(rawClean) : null;
       final existingIndex = indexByIp[ip];
       final existing = existingIndex != null ? hosts[existingIndex] : null;
       final otherNames = {...(existing?.otherNames ?? const <String>{})};
+      if (rawClean != null && rawClean != cleanName && includeAdvancedHostnames) {
+        otherNames.add(rawClean);
+      }
       String? hostname = cleanName;
       if (existing != null && (existing.hostname ?? '').isNotEmpty) {
         final existingName = existing.hostname!;
         if (_isWeakHostname(existingName)) {
           hostname = cleanName ?? existingName;
-        } else {
-          hostname = existingName;
-          if (cleanName != null && cleanName != existingName) {
+        } else if (cleanName != null && cleanName != existingName) {
+          if (existingName.contains('.') && !cleanName.contains('.')) {
+            otherNames.add(existingName);
+            hostname = cleanName;
+          } else {
+            hostname = existingName;
             otherNames.add(cleanName);
           }
+        } else {
+          hostname = existingName;
         }
       }
       if (info.aliases.isNotEmpty) {
         for (final alias in info.aliases) {
-          final cleanAlias = _cleanHostname(alias);
+          final rawAlias = _cleanHostname(alias);
+          final cleanAlias = rawAlias != null ? _stripLanDomain(rawAlias) : null;
           if (cleanAlias != null && cleanAlias.isNotEmpty) {
             otherNames.add(cleanAlias);
           }
@@ -4007,14 +4115,20 @@ mixin _LanScannerCoreImpl on _LanScannerCoreBase {
     return ndp;
   }
 
+  static final _lanDomainSuffixes = RegExp(
+    r'\.(fritz\.box|local|home|lan|localdomain|internal|box|router|gateway|modem)$',
+    caseSensitive: false,
+  );
+
+  String _stripLanDomain(String hostname) {
+    return hostname.replaceFirst(_lanDomainSuffixes, '');
+  }
+
   String? _cleanHostname(String? raw) {
     if (raw == null) return null;
-    // Keep printable ASCII; drop control/non-breaking/null chars.
     final cleaned = raw.replaceAll(RegExp(r'[^\x20-\x7E]'), '').trim();
     if (cleaned.isEmpty) return null;
     final lower = cleaned.toLowerCase();
-    // Drop reverse-DNS placeholders and IP literals to avoid materializing
-    // every probed IP as a "named" offline host.
     if (lower.endsWith('.in-addr.arpa') || lower.endsWith('.ip6.arpa')) {
       return null;
     }

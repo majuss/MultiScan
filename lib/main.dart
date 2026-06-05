@@ -374,27 +374,35 @@ class _ScanPageState extends State<ScanPage> {
           ),
         )
         .toList();
+    final selectedValid = hasInterfaces &&
+        _selectedInterfaceName != null &&
+        _interfaces.any((i) => i.name == _selectedInterfaceName);
     return SizedBox(
       width: isCompact ? double.infinity : 220,
       height: 32,
-      child: DropdownButtonFormField<String>(
-        isExpanded: true,
-        initialValue: hasInterfaces ? _selectedInterfaceName : null,
-        items: items,
-        hint: const Text('No interfaces'),
-        disabledHint: const Text('No interfaces'),
-        onChanged: (!_scanning && hasInterfaces)
-            ? (value) {
-                if (value == null || value == _selectedInterfaceName) return;
-                setState(() => _selectedInterfaceName = value);
-                if (!_scanning) _startScan(fastStart: true);
-              }
-            : null,
+      child: InputDecorator(
         decoration: const InputDecoration(
           isDense: true,
           labelText: 'Interface',
           border: OutlineInputBorder(),
           contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            isExpanded: true,
+            value: selectedValid ? _selectedInterfaceName : null,
+            items: items,
+            hint: const Text('No interfaces'),
+            disabledHint: const Text('No interfaces'),
+            onChanged: (!_scanning && hasInterfaces)
+                ? (value) {
+                    if (value == null || value == _selectedInterfaceName) return;
+                    setState(() => _selectedInterfaceName = value);
+                    if (!_scanning) _startScan(fastStart: true);
+                  }
+                : null,
+            isDense: true,
+          ),
         ),
       ),
     );
@@ -673,7 +681,22 @@ class _ScanPageState extends State<ScanPage> {
       };
       Duration? mergedLatency =
           _hosts[targetIdx].responseTime ?? host.responseTime;
-      String? mergedHostname = host.hostname ?? _hosts[targetIdx].hostname;
+      final existingHostname = _hosts[targetIdx].hostname;
+      final incomingHostname = host.hostname;
+      String? mergedHostname;
+      if (existingHostname == null || existingHostname.isEmpty) {
+        mergedHostname = incomingHostname;
+      } else if (incomingHostname == null || incomingHostname.isEmpty) {
+        mergedHostname = existingHostname;
+      } else if (existingHostname == incomingHostname) {
+        mergedHostname = existingHostname;
+      } else if (existingHostname.contains('.') && !incomingHostname.contains('.')) {
+        mergedHostname = incomingHostname;
+      } else if (!existingHostname.contains('.') && incomingHostname.contains('.')) {
+        mergedHostname = existingHostname;
+      } else {
+        mergedHostname = incomingHostname;
+      }
       final mergedOtherNames = <String>{
         ..._hosts[targetIdx].otherNames,
         ...host.otherNames,
@@ -681,12 +704,15 @@ class _ScanPageState extends State<ScanPage> {
       String? mergedVendor = host.vendor ?? _hosts[targetIdx].vendor;
       String? mergedIpv6 = host.ipv6 ?? _hosts[targetIdx].ipv6;
       String? mergedMac = host.macAddress ?? _hosts[targetIdx].macAddress;
-      final existingHostname = _hosts[targetIdx].hostname;
-      if (existingHostname != null && existingHostname != mergedHostname) {
+      if (existingHostname != null &&
+          existingHostname.isNotEmpty &&
+          existingHostname != mergedHostname) {
         mergedOtherNames.add(existingHostname);
       }
-      if (host.hostname != null && host.hostname != mergedHostname) {
-        mergedOtherNames.add(host.hostname!);
+      if (incomingHostname != null &&
+          incomingHostname.isNotEmpty &&
+          incomingHostname != mergedHostname) {
+        mergedOtherNames.add(incomingHostname);
       }
       if (mergedHostname != null) {
         mergedOtherNames.remove(mergedHostname);
@@ -898,22 +924,22 @@ class _ScanPageState extends State<ScanPage> {
     final isMobile = Platform.isAndroid || Platform.isIOS;
     final cores = math.max(1, Platform.numberOfProcessors);
     final reserved = math.max(1, cores - 1);
-    final scale = isAndroid ? 4 : (isMobile ? 4 : 8);
-    final minParallel = isAndroid ? 16 : (isMobile ? 16 : 32);
-    final maxParallel = isAndroid ? 48 : (isIOS ? 96 : (isMobile ? 64 : 128));
+    final scale = isAndroid ? 6 : (isMobile ? 4 : 8);
+    final minParallel = isAndroid ? 32 : (isMobile ? 16 : 32);
+    final maxParallel = isAndroid ? 80 : (isIOS ? 96 : (isMobile ? 64 : 128));
     final parallelBase = math.max(
       minParallel,
       math.min(maxParallel, reserved * scale),
     );
     final parallel = isAndroid
-        ? (fastStart ? math.max(16, parallelBase - 8) : parallelBase)
+        ? (fastStart ? math.max(32, parallelBase - 8) : parallelBase)
         : (isIOS
               ? (fastStart
                     ? math.max(32, math.min(96, parallelBase))
                     : math.max(24, math.min(80, parallelBase)))
               : (fastStart ? math.max(12, parallelBase ~/ 2) : parallelBase));
     final pingScale = isAndroid
-        ? (fastStart ? 1.00 : 1.10)
+        ? (fastStart ? 0.70 : 0.85)
         : (fastStart ? 0.70 : 0.85);
     final maxHostsPerInterface = isAndroid
         ? 254
@@ -922,21 +948,23 @@ class _ScanPageState extends State<ScanPage> {
       milliseconds: (_basePing.inMilliseconds * factor * pingScale)
           .round()
           .clamp(
-            isAndroid ? 320 : (isIOS ? 320 : 350),
-            isAndroid ? 1400 : (isIOS ? 1050 : 1200),
+            isAndroid ? 250 : (isIOS ? 320 : 350),
+            isAndroid ? 800 : (isIOS ? 1050 : 1200),
           ),
     );
     final mdnsWindow = Duration(
       milliseconds: (_baseMdns.inMilliseconds * factor * 0.85).round().clamp(
-        isAndroid ? 250 : 300,
-        isAndroid ? 900 : 1500,
+        isAndroid ? 200 : 300,
+        isAndroid ? 700 : 1500,
       ),
     );
     final selectedInterface = _selectedInterfaceName;
     final androidAggressive = isAndroid;
-    final reverseDnsTimeoutMs = isLinux
-        ? (fastStart ? 1800 : 2600)
-        : (fastStart ? 900 : 1200);
+    final reverseDnsTimeoutMs = isAndroid
+        ? (fastStart ? 600 : 800)
+        : (isLinux
+            ? (fastStart ? 1800 : 2600)
+            : (fastStart ? 900 : 1200));
     final effectiveReverseDnsTimeoutMs = isWindows
         ? (reverseDnsTimeoutMs * 1.3).round()
         : reverseDnsTimeoutMs;
@@ -951,7 +979,7 @@ class _ScanPageState extends State<ScanPage> {
       deferHttpScan: false,
       parallelRequests: parallel,
       enableMdns: true,
-      enableNbns: true,
+      enableNbns: !isAndroid,
       enableReverseDns: true,
       timeoutFactor: factor,
       enableSsdp: isIOS ? !fastStart : true,
@@ -969,7 +997,7 @@ class _ScanPageState extends State<ScanPage> {
       includeAdvancedHostnames: _includeAdvancedHostnames,
       allowReverseDnsFailure: true,
       allowPingFailure: true,
-      enableTcpReachability: isIOS,
+      enableTcpReachability: isIOS || isAndroid,
       reverseDnsTimeoutMs: effectiveReverseDnsTimeoutMs,
       enableArpCache: !androidAggressive,
       enableNdp: !androidAggressive,
@@ -1447,7 +1475,7 @@ class _HostTableState extends State<_HostTable> {
                         ),
                       ],
                     ),
-                    if (ipv6Light != null) ipv6Light,
+                    ?ipv6Light,
                   ],
                 )
               : ios
